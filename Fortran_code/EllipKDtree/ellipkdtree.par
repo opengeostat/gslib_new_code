@@ -1,0 +1,11 @@
+                  Parameters for EllipKDtree
+                  ***********************
+This program is a prototype to do search ellipse optimize with KDTree, for now we count the points in 
+within a ball. 
+
+START OF PARAMETERS:
+../../Data/cluster3d.dat           -file with data (we assume, x,y,z are in position 1,2,3)
+30 30 0                            - point to search
+10                                 - r
+
+
