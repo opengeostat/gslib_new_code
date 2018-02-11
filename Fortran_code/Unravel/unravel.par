@@ -1,0 +1,15 @@
+                  Parameters for UnRavel
+                  ***********************
+This program unravels a 1D array with multiple simulated realizations stored in a GSLIB file
+You may know the number of simulated points and the number of simulations
+It only works with a simulated variable at the time  
+
+START OF PARAMETERS:
+../../Data/cluster.dat           -file with data
+unravel.out                      -file for output
+1                                -variable
+4                                -number of realizations
+35                               -number of rows per realization, in full grid = nx*ny*nz
+
+
+** make sure that: number of realizations * number of rows per realization  == number of rows in the data file
