@@ -1,4 +1,4 @@
-! compile using the command: gfortran -static ellipkdtree.f90 -o ellipkdtree
+! compile using the command: gfortran -static -static-libgfortran ellipkdtree.f90 kdtree2.f90 -o ellipkdtree
 
 
 program main
@@ -29,15 +29,17 @@ program main
 !   Prototype for KDtree search 
 !
 !-----------------------------------------------------------------------
-    parameter (MAXLEN=132,MAXFIL=40,VERSION=1.000)
     
+    use kdtree2_module
+    
+    parameter (MAXLEN=132,MAXFIL=40,VERSION=1.000)
     parameter (maxnvar = 300)
     
     character str*132,datafl*500,gridfl*500,outfl*500,fmt*36,label*20
     logical ::   testfl
     data      lin/1/,lout/2/
     integer ::   maxpoints
-    integer :: test, error, i,j, n
+    integer :: test, error, i,j, n, ix, iy, iz
     real, allocatable :: table(:,:) , datapt(:,:)
     real :: gx,gy,gz, r, r2
     
@@ -50,7 +52,30 @@ program main
     ! data parameters
     
     integer :: maxdat
+    
+    ! the tree 
+    type(kdtree2), pointer :: thekdtree
+    
+    ! an interface, required to pass FORTRAN pointer as parameter to external subrutines
+    Interface
+        subroutine create_tree(datapt,maxdat, tree, error)
+            use kdtree2_module
+            integer,   intent(out) ::   error
+            integer , intent(in):: maxdat
+            real, intent(in) :: datapt(3,maxdat)            
+            type(kdtree2), pointer :: tree 
+        end subroutine
+        subroutine count_points(tree,gx,gy,gz, r2, n, error)
+            use kdtree2_module
+            integer,   intent(out) ::   error, n
+            real, intent(in) :: gx,gy,gz, r2
+            real :: qv(3)
+            type(kdtree2), pointer :: tree   
+        end subroutine        
+    end Interface
         
+    
+    
     
     ! Note VERSION number:
     write(*,*) '  '
@@ -85,6 +110,9 @@ program main
     call chknam(datafl,MAXFIL)
     write(*,*) 'Data File:                      ',datafl
 
+    read(lin,*,err=98) ix, iy, iz 
+    write(*,*) 'Columns with X, Y, Z coord    : ', ix, iy, iz     
+    
     read(lin,*,err=98) gx,gy,gz
     write(*,*) 'Point coordinates               ',gx,gy,gz
     
@@ -137,11 +165,10 @@ program main
         stop
     end if 
     do i=1,maxdat
-        datapt(1,i) = table(i,1)
-        datapt(2,i) = table(i,2)
-        datapt(3,i) = table(i,3)
+        datapt(1,i) = table(i,ix)
+        datapt(2,i) = table(i,iy)
+        datapt(3,i) = table(i,iz)
     end do
-    
     
     ! print 10 first lines       
     do i=1,min(maxdat, 10)
@@ -149,9 +176,17 @@ program main
     end do 
     write (*,*) 'End of table or first 10 rows'
   
+    ! create the tree structure only once and use it later for multiple search
+    call create_tree(datapt,maxdat, thekdtree, error)
+    if (error/=0) then 
+        Write (*,*) 'Error creating KDTREE structure', error
+        stop
+    end if  
+  
+  
     ! Find point in ellipse with center gx,gy,gz
     r2 = r*r
-    call ellipkdtree(datapt,maxdat,gx,gy,gz, r2, n, error)
+    call count_points(thekdtree,gx,gy,gz, r2, n, error)
     
     write (*,*) '>>>> Points within distance ', n
 
@@ -166,16 +201,31 @@ program main
 
 END PROGRAM
 
+subroutine create_tree(datapt,maxdat, tree, error)
+    ! creates a kdtree instance
+    use kdtree2_module
+    
+    integer,   intent(out) ::   error
+    integer , intent(in):: maxdat
+    real, intent(in) :: datapt(3,maxdat)
+    
+    type(kdtree2), pointer :: tree    
+    
+    error = 0
+    
+    ! create the tree
+    tree => kdtree2_create(datapt,sort=.true.,rearrange=.true.) 
 
-subroutine ellipkdtree(datapt,maxdat,gx,gy,gz, r2, n, error)
+end subroutine
+
+subroutine count_points(tree,gx,gy,gz, r2, n, error)
     ! extracts variables from one table to other
     ! you can also duplicate and change order
     
     use kdtree2_module
     
     integer,   intent(out) ::   error, n
-    integer , intent(in):: maxdat
-    real, intent(in) :: datapt(3,maxdat), gx,gy,gz, r2
+    real, intent(in) :: gx,gy,gz, r2
     
     real :: qv(3)
     type(kdtree2), pointer :: tree
@@ -185,15 +235,10 @@ subroutine ellipkdtree(datapt,maxdat,gx,gy,gz, r2, n, error)
     qv(3) = gz
 
   
-    error = 0
-    
-    ! create the tree
-    tree => kdtree2_create(datapt,sort=.false.,rearrange=.false.)  ! this is how you create a tree. 
+    error = 0  
  
     !get the number of points inside radius r*r=r2  
     n = kdtree2_r_count(tree,qv,r2)
- 
-    
  
     
 end subroutine
