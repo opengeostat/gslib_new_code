@@ -7,6 +7,6 @@ START OF PARAMETERS:
 ../../Data/cluster3d.dat           -file with data (we assume, x,y,z are in position 1,2,3)
 7 8 9                              -column with isotropic coordinates
 0 70 0                             - search ball location x, y, z
-10                                 - r
-
+20                                 - r
+ellipkdtree.out                    - results
 

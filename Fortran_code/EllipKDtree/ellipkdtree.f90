@@ -40,7 +40,8 @@ program main
     data      lin/1/,lout/2/
     integer ::   maxpoints
     integer :: test, error, i,j, n, ix, iy, iz
-    real, allocatable :: table(:,:) , datapt(:,:)
+    real, allocatable :: table(:,:) , datapt(:,:), dist(:), distout(:)
+    integer, allocatable :: inr2(:), inr2out(:)
     real :: gx,gy,gz, r, r2
     
     ! header parameters
@@ -71,7 +72,15 @@ program main
             real, intent(in) :: gx,gy,gz, r2
             real :: qv(3)
             type(kdtree2), pointer :: tree   
-        end subroutine        
+        end subroutine
+        subroutine get_points(tree,gx,gy,gz,r2,maxdat,nfound, inr2, dist,error)
+            use kdtree2_module
+            integer, intent(out) :: error, inr2(maxdat),nfound
+            real, intent(in) :: gx,gy,gz,r2
+            integer, intent(in) :: maxdat
+            real, intent(out) :: dist(maxdat)    
+            type(kdtree2), pointer :: tree
+        end subroutine
     end Interface
         
     
@@ -118,7 +127,10 @@ program main
     
     read(lin,*,err=98) r
     write(*,*) 'Distance                        ', r
-    
+
+    read(lin,'(a40)',err=98) outfl
+    call chknam(outfl,MAXFIL)
+    write(*,*) 'Output File:                    ',outfl    
     
     write(*,*)
     close(lin)
@@ -146,11 +158,14 @@ program main
     
     ! load the data in memory 
     ! first allocate memory
-    allocate (table(maxdat,nvar),stat = test)
+    allocate (table(maxdat,nvar), inr2(maxdat),dist(maxdat), &
+              inr2out(maxdat),distout(maxdat),stat = test)
     if (test /= 0) then
         write(*,*) 'Error 1: Allocation failed due to ','insufficient memory!', test
         stop
     end if    
+
+    
     ! then read the data
     call read_data(datafl, nvar, maxdat, table, error)
     if (error/=0) then 
@@ -186,9 +201,42 @@ program main
   
     ! Find point in ellipse with center gx,gy,gz
     r2 = r*r
-    call count_points(thekdtree,gx,gy,gz, r2, n, error)
+    !call count_points(thekdtree,gx,gy,gz, r2, n, error)
     
-    write (*,*) '>>>> Points within distance ', n
+    ! for cross validation (or probably simulation) use kdtree2_r_nearest_around_point, this searches around point existing in data
+    
+    call get_points(thekdtree,gx,gy,gz,r2,maxdat,n, inr2, dist,error)
+    
+    ! these are dum variables to write out in file
+    inr2out(:) = 0
+    distout(:) = -99
+    
+    do i=1,n
+        j = inr2(i)
+        inr2out(j) = 1
+        distout(j) = dist(i)
+    end do 
+    
+    
+    ! and write results in the output file 
+    open(unit=lout,file=outfl, status='UNKNOWN')
+    write(lout,'(A)') trim(comment_line)
+    write (tttx, '(i8)') nvar + 2
+    write(lout,'(A)') trim(adjustl(tttx)) 
+    !write variable names
+    do i=1,nvar
+        write(lout,'(A)') trim(varnames(i)) 
+    end do 
+    write(lout,'(A)') 'inr2'
+    write(lout,'(A)') 'dist'
+    do i=1,maxdat
+        write (lout,*) ( table(i,j), j=1,nvar), inr2out(i),distout(i)
+    end do
+    
+    ! close files and stop the program
+
+    close(lin)
+    close(lout)
 
     close(lin)
     close(lout)
@@ -240,6 +288,50 @@ subroutine count_points(tree,gx,gy,gz, r2, n, error)
     !get the number of points inside radius r*r=r2  
     n = kdtree2_r_count(tree,qv,r2)
  
+    
+end subroutine
+
+
+subroutine get_points(tree,gx,gy,gz,r2,maxdat,nfound, inr2, dist,error)
+    ! extracts variables from one table to other
+    ! you can also duplicate and change order
+    
+    use kdtree2_module
+    
+    integer, intent(out) :: error, inr2(maxdat),nfound
+    real, intent(in) :: gx,gy,gz,r2
+    integer, intent(in) :: maxdat
+    real, intent(out) :: dist(maxdat)
+    integer :: k
+    
+    real :: qv(3)
+    type(kdtree2_result), allocatable :: results(:) 
+    type(kdtree2), pointer :: tree
+  
+    qv(1) = gx 
+    qv(2) = gy
+    qv(3) = gz
+
+  
+    error = 0  
+    
+    allocate(results(maxdat))
+ 
+    !get the number of points inside radius r*r=r2  
+    call kdtree2_r_nearest(tree,qv,r2,nfound,nalloc=maxdat,results=results)
+ 
+    ! hard copy... may slow down the process but it is more safe
+    
+    if (nfound>maxdat) then 
+        error = 1
+        return
+    end if    
+     
+  
+    dist(:) = results(:)%dis
+    inr2(:) = results(:)%idx
+    
+    deallocate(results)
     
 end subroutine
 

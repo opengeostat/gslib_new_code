@@ -1199,7 +1199,7 @@ contains
 
     sr%nalloc = nalloc
     sr%overflow = .false.
-
+    
     call validate_query_storage(nalloc)
 
     !    sr%dsl = HUGE(sr%dsl)    ! set to huge positive values

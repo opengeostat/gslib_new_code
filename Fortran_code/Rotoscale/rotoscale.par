@@ -11,7 +11,7 @@ START OF PARAMETERS:
 rotoscale.out                   - file for output
 1 2 3                           - columns with x, y and z coordinates
 .0 .0 .0                        - pivot point for rotation 
-20.0  20.0  20.0                -anisotropy ellipsoid radii (anisotropies are relative to first axis)
+40.0  20.0  20.0                -anisotropy ellipsoid radii (anisotropies are relative to first axis)
  45.0   0.0   0.0                -angles for anisotropy ellipsoid
 0                               - 0 direct transformation, 1 reversed transformation 
 

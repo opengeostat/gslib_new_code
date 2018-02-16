@@ -44,14 +44,13 @@ program main
     
     ! header parameters
        
-    character(len=500) :: comment_line
-    character, dimension (maxnvar,80) ::  varnames   
+    character(len=500) :: comment_line, tttx
+    character(len=80), dimension (maxnvar) ::  varnames 
     integer  ::  nvar
 
     ! data parameters
     
     integer :: maxdat
-    character(len=80):: ttx
         
     
     ! Note VERSION number:
@@ -110,7 +109,7 @@ program main
     write (*,*) 'Nvar:                  ', nvar
     write (*,*) 'Varnames:              '
     do i=1,nvar
-        write (*,*) i, varnames(i,:)
+        write (*,*) i, varnames(i)
     end do 
     
     ! get number of rows in the file
@@ -154,12 +153,13 @@ program main
     
     ! and write results in the output file 
     open(unit=lout,file=outfl, status='UNKNOWN')
-    write(lout,*) trim(comment_line)
-    write(lout,*) nvariables
+    write(lout,'(A)') trim(comment_line)
+    write (tttx, '(i8)') nvariables
+    write(lout,'(A)') trim(adjustl(tttx)) 
     !write variable names
     do i=1,nvariables
         j= varindex(i)
-        write(lout,*) varnames(j,:)  
+        write(lout,'(A)') trim(varnames(j)) 
     end do 
     do i=1,maxdat
         write (lout,*) ( newtable(i,j), j=1,nvariables)
@@ -245,7 +245,7 @@ subroutine read_header(datafl, comment_line, varnames, nvar, error, maxnvar)
     integer, intent(in) :: maxnvar    
     character(len=500), intent(in)  :: datafl
     character(len=500), intent(out) :: comment_line
-    character, intent(out) , dimension (maxnvar,80) ::  varnames   
+    character(len=80), intent(out) , dimension (maxnvar) ::  varnames   
             
     integer,   intent(out)  ::  nvar
     
@@ -271,9 +271,7 @@ subroutine read_header(datafl, comment_line, varnames, nvar, error, maxnvar)
     
     do i=1,nvar
         read(lin,'(a80)',err=99) str
-        do j=1,80
-            varnames(i,j)= str(j:j)
-        end do
+        varnames(i) = str
     end do
 
     close(lin)

@@ -1,0 +1,13 @@
+                  Parameters for ExtractVar
+                  ***********************
+This program extracts a set of columns or variables from a GSLIB file and save it in a different file
+You can also duplicate and change order
+
+In this example we are changing the variable order
+
+START OF PARAMETERS:
+../../Data/cluster.dat           -file with data
+extractvar.out                   -file for output
+6                                -num of variables
+1 2 2 3 4 5                     -variables
+
