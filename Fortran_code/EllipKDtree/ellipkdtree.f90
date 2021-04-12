@@ -192,7 +192,7 @@ program main
     write (*,*) 'End of table or first 10 rows'
   
     ! create the tree structure only once and use it later for multiple search
-    call create_tree(datapt,maxdat, thekdtree, error)
+    call create_tree(datapt,maxdat, thekdtree, error)   !warning this has pointers, make sure it is properly set free if using from python
     if (error/=0) then 
         Write (*,*) 'Error creating KDTREE structure', error
         stop
