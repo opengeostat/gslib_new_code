@@ -1,0 +1,2 @@
+see https://github.com/opengeostat/gslib_new_code/wiki/gslib_acorni-(DEPRECATED)
+see _acorni::test_random_number for an example
