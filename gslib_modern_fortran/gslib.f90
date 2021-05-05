@@ -6,6 +6,14 @@ module gslib
 
     contains
 
+
+        ! TODO: add LAPACK replacement for ksol.f90 and ktsol.f90 
+        !       to compile
+        !        a) install openblas precompiled. with conda use 
+        !           > conda install -c conda-forge openblas
+        !        b) just link the library. here an example 
+        !           > gfortran -o .\test.exe .\test.f90 -L "OpenBLAS-0.3.15" "C:\Users\AMartinez\Miniconda3\pkgs\openblas-0.3.15-pthreads_h543f93c_0\Library\lib\openblas.lib"
+
         recursive subroutine QSort(na,A,I)
             !-----------------------------------------------------------------------
             !                 Sort inplase an array and its index 
