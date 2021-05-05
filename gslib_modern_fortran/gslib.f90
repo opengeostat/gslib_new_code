@@ -43,7 +43,9 @@ module gslib
 
             if (na > 1) then
 
-                CALL random_number(random)
+                CALL random_number(random)            ! is this OK in parallel? It is preventing to make this subrotine pure
+                                                      ! possible solution, use the classical 1/2 na partition
+                
                 pivot = A(int(random*real(na-1))+1)   ! Choice a random pivot (not best performance, but avoids worst-case)
                 left = 1
                 right = na
