@@ -45,7 +45,7 @@ module gslib
 
                 CALL random_number(random)            ! is this OK in parallel? It is preventing to make this subrotine pure
                                                       ! possible solution, use the classical 1/2 na partition
-                
+
                 pivot = A(int(random*real(na-1))+1)   ! Choice a random pivot (not best performance, but avoids worst-case)
                 left = 1
                 right = na
@@ -159,8 +159,7 @@ module gslib
                 call gauinv(dble(wtt(ind(i))),vrg(ind(i)),ierror)
                 if (ierror>0) return
             end do
-        
-        
+            
         end subroutine nscore
 
         pure subroutine gauinv(p,xp,ierror)
@@ -1054,7 +1053,7 @@ module gslib
         end function getindx
             
 
-        subroutine setrot(ang1,ang2,ang3,anis1,anis2,ind,nrotmat,rotmat)
+        pure subroutine setrot(ang1,ang2,ang3,anis1,anis2,ind,nrotmat,rotmat)
             !-----------------------------------------------------------------------
             !              Sets up an Anisotropic Rotation Matrix
             !              **************************************
@@ -1128,7 +1127,7 @@ module gslib
         
         end subroutine setrot
 
-        subroutine ordrel(ivtype,ncut,ccdf,ccdfo,nviol,aviol,xviol)
+        pure subroutine ordrel(ivtype,ncut,ccdf,ccdfo,nviol,aviol,xviol)
             !-----------------------------------------------------------------------
             !                 Correct Order Relation Problems
             !                 *******************************
