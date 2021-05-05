@@ -6,9 +6,74 @@ module gslib
 
     contains
 
-        !TODO: get sorting subroutine to replace sortem
+        recursive subroutine QSort(na,A,I)
+            !-----------------------------------------------------------------------
+            !                 Sort inplase an array and its index 
+            !              ******************************************
+            ! Sorts an array using a recursive implementation of the quick sort 
+            ! algorithm. 
+            ! This is modified from https://rosettacode.org/wiki/Sorting_algorithms/Quicksort#Fortran
+            !
+            ! INPUT VARIABLES:
+            !   nd               Number of data (no missing values)
+            !
+            ! INPUT/OUTPUT VARIABLES:
+            !   A                Real. Array of values to sort in place
+            !   I                Integer. Index to track the original order 
+            !-----------------------------------------------------------------------
 
-        subroutine nscore(nd,vr,wt,tmp,vrg,ierror)
+            ! inputs
+            integer, intent(in) :: na
+            real, dimension(na), intent(inout) :: A    ! array value
+            integer, dimension(na), intent(inout) :: I ! array index 1,2,3,4...
+
+            ! local
+            integer :: left, right, temp_order
+            real :: random
+            real :: pivot, temp_value
+            integer :: marker
+
+            if (na > 1) then
+
+                CALL random_number(random)
+                pivot = A(int(random*real(na-1))+1)   ! Choice a random pivot (not best performance, but avoids worst-case)
+                left = 1
+                right = na
+                ! Partition loop
+                do
+                    if (left >= right) exit
+                    do
+                        if (A(right) <= pivot) exit
+                        right = right - 1
+                    end do
+                    do
+                        if (A(left) >= pivot) exit
+                        left = left + 1
+                    end do
+                    if (left < right) then
+                        temp_value = A(left)
+                        temp_order = I(left)
+                        A(left) = A(right)
+                        I(left) = I(right)
+                        A(right) = temp_value
+                        I(right) = temp_order
+                    end if
+                end do
+            
+                if (left == right) then
+                    marker = left + 1
+                else
+                    marker = left
+                end if
+            
+                call QSort(marker-1,    A(:marker-1),I(:marker-1))
+                call QSort(nA-marker+1, A(marker:),  I(marker:))
+
+            end if 
+
+        end subroutine QSort
+
+        subroutine nscore(nd,vr,wt,vrg,ierror)
             !-----------------------------------------------------------------------
             !              Transform Univariate Data to Normal Scores
             !              ******************************************
@@ -20,12 +85,10 @@ module gslib
             !
             ! INPUT VARIABLES:
             !   nd               Number of data (no missing values)
-            !   vr(nd)           Data values to be transformed
-            !   tmin,tmax        data trimming limits             
+            !   vr(nd)           Data values to be transformed          
             !   wt(nd)           Weight for each data (don't have to sum to 1.0)
             !                    this is an optional variable, if present will use it, 
             !                    otherwise will use equal weighted                   
-            !   tmp(nd)          Temporary storage space for sorting
             !
             ! OUTPUT VARIABLES:
             !   vrg(nd)          normal scores
@@ -34,14 +97,13 @@ module gslib
             ! EXTERNAL REFERENCES:
             
             !   gauinv           Calculates the inverse of a Gaussian cdf
-            !   sortem           sorts a number of arrays according to a key array
+            !   Qsort            sorts a number of arrays in ascending order
             !-----------------------------------------------------------------------
 
             ! inputs
             integer, intent(in) :: nd 
             real, intent(in), dimension(nd) :: vr 
             real, intent(in), dimension(nd), optional :: wt
-            real, intent(inout), dimension(nd) :: tmp         ! this is a temp variable for sorting, an ugly solution but efficient
 
             !output 
             real, intent(out), dimension(nd) :: vrg 
@@ -49,8 +111,8 @@ module gslib
 
 
             ! internal variables
-            real, dimension(nd) :: wtt
-            real*8 :: pd
+            real, dimension(nd) :: wtt, vra
+            integer, dimension(nd) :: ind
             real   :: twt, oldcp, cp
             integer :: i 
 
@@ -59,11 +121,14 @@ module gslib
             ierror = 0
             twt    = 0.0
             do i=1,nd
-                tmp(i) = real(i)
+                ! initialize internal copy of the variable, weight and index
+                ind(i) = i
+                vra(i) = vr(i)
+                wtt(i) = wt(i)
                 if(present(wt)) then
                     twt = twt + 1.
                 else
-                    twt = twt + wt(i)
+                    twt = twt + wt(i)  ! total weight
                 end if
             end do
             if(nd < 1 .OR. twt < EPSLON) then
@@ -71,27 +136,24 @@ module gslib
                 return
             end if
 
-            call sortem(1,nd,vr,2,wt,tmp,d,e,f,g,h)
+            call QSort(nd, A=vra, I=ind)
         
             ! Compute the cumulative probabilities:
         
             oldcp = 0.0
             cp    = 0.0
             do i=1,nd
-                cp     =  cp + wt(i) / twt
+                cp     =  cp + wtt(ind(i)) / twt
                 wtt(i)  = (cp + oldcp)/ 2.0
                 oldcp  =  cp
-                call gauinv(dble(wt(i)),vrg(i),ierror)
+                call gauinv(dble(wtt(ind(i))),vrg(ind(i)),ierror)
                 if (ierror>0) return
             end do
         
-            ! Get the arrays back in original order:
-        
-            call sortem(1,nd,tmp,3,wtt,vr,vrg,e,f,g,h)
         
         end subroutine nscore
 
-        subroutine gauinv(p,xp,ierror)
+        pure subroutine gauinv(p,xp,ierror)
             !-----------------------------------------------------------------------
             ! Computes the inverse of the standard normal cumulative distribution
             ! function with a numerical approximation from : Statistical Computing,
