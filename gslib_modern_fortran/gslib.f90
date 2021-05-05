@@ -1025,11 +1025,10 @@ module gslib
         end function cova3
 
 
-        pure elemental integer function getindx(n,min,siz,loc) result (index)
+        pure elemental integer function getindx(min,siz,loc) result (index)
             !-----------------------------------------------------------------------
             !     Gets the coordinate index location of a point within a grid
             !     ***********************************************************
-            ! n       number of "nodes" or "cells" in this coordinate direction
             ! min     origin at the center of the first cell
             ! siz     size of the cells
             ! loc     location of the point being considered
@@ -1037,7 +1036,6 @@ module gslib
             !-----------------------------------------------------------------------
 
             ! inputs 
-            integer, intent(in) :: n
             real, intent (in) :: min,siz,loc
             
             ! Compute the index of "loc":
