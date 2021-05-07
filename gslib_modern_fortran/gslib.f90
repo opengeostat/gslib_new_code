@@ -154,7 +154,7 @@ module gslib
 
         end subroutine QSort
 
-        subroutine nscore(nd,vr,wt,vrg,ierror)
+        pure subroutine nscore(nd,vr,wt,vrg,ierror)
             !-----------------------------------------------------------------------
             !              Transform Univariate Data to Normal Scores
             !              ******************************************
