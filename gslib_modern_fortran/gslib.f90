@@ -13,8 +13,11 @@ module gslib
 
     contains
 
+        ! TODO: write a set of validations/tests in two stages
+        !       a) sequential tests
+        !       b) parallel tests with OpenMP (and coarrays if possible)
 
-        ! TODO: add LAPACK replacement for ksol.f90 and ktsol.f90 
+        ! NOTE: use LAPACK as replacement for ksol.f90 and ktsol.f90 
         !       to compile
         !        a) install openblas precompiled. with conda use 
         !           > conda install -c conda-forge openblas
@@ -40,15 +43,17 @@ module gslib
             ! please note that here [] denote array, not coarray
             !
             ! the output is a sequence of integers in the inteval ]0, m[
-            ! to get uniform numbers divide by the modulus, for example x/2^31.
+            ! to get uniform numbers divide by the modulus, for example x/2^31, or use function ulcg()
+            ! Note that you have to keep a copy of the previous state x[n-1],
             !
             ! see also: https://rosettacode.org/wiki/Linear_congruential_generator#Fortran
             !
             ! INPUT VARIABLES:
-            !   x                the state of the previous random number in the sequence
-            !
+            !   x                integer of 64 bits (i64) with the state of the previous 
+            !                    random number in the sequence
             ! OUTPUT
-            !   seed[n+1]        the state of the next random number in the sequence
+            !   x[n+1]           integer of 64 bits (i64) with the state of the next 
+            !                    random number in the sequence
             !-----------------------------------------------------------------------
 
             ! inputs
@@ -1289,3 +1294,12 @@ module gslib
         end subroutine ordrel
 
 end module gslib
+
+
+program test_gslib
+    use gslib
+    implicit none
+
+    ! put tests here
+
+end program
