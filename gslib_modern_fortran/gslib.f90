@@ -81,81 +81,57 @@ module gslib
             ! inputs
             integer(i64), intent(in) :: x
             
-            ulcg = real(x/m_lcg)
+            ulcg = real(x)/real(m_lcg)
 
         end function ulcg
 
-        recursive pure subroutine QSort(na,A,I, randi)
+        recursive pure subroutine QSort(na,A,Ind,first, last)
             !-----------------------------------------------------------------------
             !                 Sort inplase an array and its index 
             !              ******************************************
             ! Sorts an array using a recursive implementation of the quick sort 
             ! algorithm. 
-            ! This is modified from https://rosettacode.org/wiki/Sorting_algorithms/Quicksort#Fortran
+            ! This is modified from Gist: https://gist.github.com/t-nissie/479f0f16966925fa29ea
+            ! Author: t-nissie
+            ! License: GPLv3
+            ! modiffied by Adrian Martinez
             !
             ! INPUT VARIABLES:
             !   nd               Number of data (no missing values)
             !
             ! INPUT/OUTPUT VARIABLES:
             !   A                Real. Array of values to sort in place
-            !   I                Integer. Index to track the original order 
+            !   Ind              Integer. Index to track the original order 
             !-----------------------------------------------------------------------
 
             ! inputs
-            integer, intent(in) :: na
+            integer, intent(in) :: na 
+            integer, intent(in) :: first, last
             real, dimension(na), intent(inout) :: A    ! array value
-            integer, dimension(na), intent(inout) :: I ! array index 1,2,3,4...
-            integer(i64), intent(inout), optional :: randi       !randon integer at previous state  
-
-            ! local
-            integer :: left, right, temp_order
-            real :: random
-            real :: pivot, temp_value
-            integer :: marker
-
-            if (.NOT. present(randi)) randi = 736576564
-
-            ! initialize random
-
-            if (na > 1) then
-                randi = lcg(randi)
-                random = ulcg(randi)                  ! is this OK in parallel? It is preventing to make this subrotine pure
-                                                      ! possible solution, use the classical 1/2 na partition
-
-                pivot = A(int(random*real(na-1))+1)   ! Choice a random pivot (not best performance, but avoids worst-case)
-                left = 1
-                right = na
-                ! Partition loop
-                do
-                    if (left >= right) exit
-                    do
-                        if (A(right) <= pivot) exit
-                        right = right - 1
-                    end do
-                    do
-                        if (A(left) >= pivot) exit
-                        left = left + 1
-                    end do
-                    if (left < right) then
-                        temp_value = A(left)
-                        temp_order = I(left)
-                        A(left) = A(right)
-                        I(left) = I(right)
-                        A(right) = temp_value
-                        I(right) = temp_order
-                    end if
-                end do
+            integer, dimension(na), intent(inout) :: Ind ! array index 1,2,3,4...
             
-                if (left == right) then
-                    marker = left + 1
-                else
-                    marker = left
-                end if
-            
-                call QSort(marker-1,    A(:marker-1),I(:marker-1), randi)
-                call QSort(nA-marker+1, A(marker:),  I(marker:)  , randi)
-
-            end if 
+            !internal
+            real :: x, t
+            integer ::  i, j, ti
+          
+            x = a( (first+last) / 2 )
+            i = first
+            j = last
+            do
+               do while (a(i) < x)
+                  i=i+1
+               end do
+               do while (x < a(j))
+                  j=j-1
+               end do
+               if (i >= j) exit
+               t = a(i);  a(i) = a(j);  a(j) = t
+               ti = Ind(i);  Ind(i) = Ind(j);  Ind(j) = ti
+               i=i+1
+               j=j-1
+            end do
+            if (first < i-1) call QSort(na,A,Ind, first, i-1)
+            if (j+1 < last)  call QSort(na,A,Ind, j+1, last)
 
         end subroutine QSort
 
@@ -222,7 +198,7 @@ module gslib
                 return
             end if
 
-            call QSort(nd, A=vra, I=ind)
+            call QSort(nd, vra, ind, 1, nd)
         
             ! Compute the cumulative probabilities:
         
@@ -1296,10 +1272,150 @@ module gslib
 end module gslib
 
 
+
+
+
+
+! test functions
+
+subroutine test_qsort_serial()
+    use gslib
+    implicit none
+    integer, parameter :: na = 6
+    real, dimension (na) :: A = [3.,5.,2.,1.,8.,2.0]
+    integer, dimension (na) :: I = [1,2,3,4,5,6]
+
+    call QSort(na,A,I,1,na)
+    print *,  A
+    print *,  I
+
+end subroutine test_qsort_serial
+
+subroutine test_qsort()
+    use gslib
+    implicit none
+    integer, parameter :: na = 6
+    real, dimension (na) :: A 
+    integer, dimension (na) :: I 
+
+    !$OMP PARALLEL private(A, I)
+        A = [3.,5.,2.,1.,8.,2.0]
+        I = [1,2,3,4,5,6]
+        call QSort(na,A,I,1,na)
+        print *,  A
+        print *,  I
+    !$OMP END PARALLEL
+
+end subroutine test_qsort
+
+subroutine test_ulcg()
+    use gslib
+    implicit none
+    real, dimension (5) :: x
+    integer, dimension (5) :: ind
+    integer(i64) :: old_state
+    integer :: i
+
+    !$OMP PARALLEL private(old_state, x, i, ind)
+        x = 0.
+        old_state = 87687                        ! make sure you set the seed here
+        do i=1 , 5
+            old_state = lcg(old_state)
+            x(i) = ulcg(old_state)
+        end do
+        call QSort(5,x,ind, 1, 5)
+        print *,  x
+    !$OMP END PARALLEL
+
+end subroutine test_ulcg
+
+subroutine test_ulcg_serial()
+    use gslib
+    implicit none
+    real, dimension (5) :: x
+    integer, dimension (5) :: ind
+    integer(i64) :: old_state = 87687_i64
+    integer :: i
+
+    do i=1 , 5
+        old_state = lcg(old_state)
+        x(i) = ulcg(old_state)
+    end do
+    call QSort(5,x,ind, 1, 5)
+    print *,  x
+
+end subroutine test_ulcg_serial
+
+
+subroutine test_ulcg_serial2()
+    use gslib
+    implicit none
+    real, dimension (500) :: x
+    integer(i64) :: old_state = 876878767
+    integer :: i
+    real :: mean, variance 
+
+    do i=1 , 500
+        old_state = lcg(old_state)
+        x(i) = ulcg(old_state)
+    end do
+    mean = sum(x)/500
+    variance = sum(x*x)/500-mean*mean
+
+    print *, 'experimental mean, variance',  mean, variance
+    print *, 'expected     mean, variance',  0.5, 1./12.
+
+end subroutine test_ulcg_serial2
+
+subroutine test_random_number()
+    use gslib
+    implicit none
+    integer, allocatable :: seed(:)
+    real, dimension (5) :: x
+    integer, dimension (5) :: ind
+    integer :: n
+  
+
+    !$OMP PARALLEL private(seed, x, ind)
+        call random_seed(size = n)
+        allocate(seed(n))
+        seed = 87687
+        call RANDOM_NUMBER(x)
+        call QSort(5,x,ind, 1, 5)
+        print *,  x
+    !$OMP END PARALLEL
+
+end subroutine test_random_number
+
+
+
 program test_gslib
     use gslib
     implicit none
 
-    ! put tests here
+    print *, 'test qsort'
+    print *, 'expected result'
+    print *, '   1.0       2.0       2.0      3.0      5.00       8.0'
+    print *, '     4         6         3        1        2          5'
+    call  test_qsort()
 
+    print *, ''
+    print *, 'test ulcg'
+    print *, 'expected result'
+    print *, "same sequence n core times."
+    call  test_ulcg()
+
+    print *, 'test random_number'
+    print *, 'expected result'
+    print *, "same sequence n core times. However, this is not always the case, and don't know why"
+    call  test_random_number()
+
+    print *, 'test ulcg serial version'
+    print *, 'expected result'
+    print *, "7.47933537E-02  0.221471041      0.389764041      0.548619866      0.776747882"
+    call  test_ulcg_serial()
+
+    print *, 'test ulcg serial version mean and variance'
+    print *, 'expected result are the mean and variance of the uniform distribution with parameter a=0, b=1'
+    call  test_ulcg_serial2()
 end program

@@ -7,6 +7,13 @@ module neighborhood
 
     contains
 
+        ! todo: add kdtree 
+        !       add efficient structure to search in grid (may be required in simulations)
+        !           see for example https://link.springer.com/article/10.1007/s41060-020-00208-2
+        !           consider this one: https://github.com/dongli/fortran-octree
+        !           see also http://www.open3d.org/docs/release/index.html
+        !           it looks like octree is the way to go 
+        !         
 
         pure elemental logical function ball(x, y, z, x0, y0, z0, r)
             !-----------------------------------------------------------------------
