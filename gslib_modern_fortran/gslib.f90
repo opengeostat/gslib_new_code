@@ -1273,8 +1273,10 @@ end module gslib
 
 
 
+! do not use from here ***************************************************************************
+! this is testing zone
 
-
+! TODO: test functions gauinv, nscore, backtr, gcum, powint, dpowint, locate, dlocate, beyond, sqdist, cova3, getindx, setrot, ordrel
 
 ! test functions
 
