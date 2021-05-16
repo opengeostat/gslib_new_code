@@ -85,57 +85,81 @@ module gslib
 
         end function ulcg
 
-        recursive pure subroutine QSort(na,A,Ind,first, last)
+        recursive pure subroutine QSort(na,A,I, randi)
             !-----------------------------------------------------------------------
             !                 Sort inplase an array and its index 
             !              ******************************************
             ! Sorts an array using a recursive implementation of the quick sort 
             ! algorithm. 
-            ! This is modified from Gist: https://gist.github.com/t-nissie/479f0f16966925fa29ea
-            ! Author: t-nissie
-            ! License: GPLv3
-            ! modiffied by Adrian Martinez
+            ! This is modified from https://rosettacode.org/wiki/Sorting_algorithms/Quicksort#Fortran
             !
             ! INPUT VARIABLES:
             !   nd               Number of data (no missing values)
             !
             ! INPUT/OUTPUT VARIABLES:
             !   A                Real. Array of values to sort in place
-            !   Ind              Integer. Index to track the original order 
+            !   I                Integer. Index to track the original order 
             !-----------------------------------------------------------------------
 
             ! inputs
-            integer, intent(in) :: na 
-            integer, intent(in) :: first, last
+            integer, intent(in) :: na
             real, dimension(na), intent(inout) :: A    ! array value
-            integer, dimension(na), intent(inout) :: Ind ! array index 1,2,3,4...
+            integer, dimension(na), intent(inout) :: I ! array index 1,2,3,4...
+            integer(i64), intent(inout), optional :: randi       !randon integer at previous state  
+
+            ! local
+            integer :: left, right, temp_order
+            real :: random
+            real :: pivot, temp_value
+            integer :: marker
+
+            if (.NOT. present(randi)) randi = 736576564
+
+            ! initialize random
+
+            if (na > 1) then
+                randi = lcg(randi)
+                random = ulcg(randi)                  ! is this OK in parallel? It is preventing to make this subrotine pure
+                                                      ! possible solution, use the classical 1/2 na partition
+                
+                pivot = A(int(random*real(na-1))+1)   ! Choice a random pivot (not best performance, but avoids worst-case)
+                left = 1
+                right = na
+                ! Partition loop
+                do
+                    if (left >= right) exit
+                    do
+                        if (A(right) <= pivot) exit
+                        right = right - 1
+                    end do
+                    do
+                        if (A(left) >= pivot) exit
+                        left = left + 1
+                    end do
+                    if (left < right) then
+                        temp_value = A(left)
+                        temp_order = I(left)
+                        A(left) = A(right)
+                        I(left) = I(right)
+                        A(right) = temp_value
+                        I(right) = temp_order
+                    end if
+                end do
             
-            !internal
-            real :: x, t
-            integer ::  i, j, ti
-          
-            x = a( (first+last) / 2 )
-            i = first
-            j = last
-            do
-               do while (a(i) < x)
-                  i=i+1
-               end do
-               do while (x < a(j))
-                  j=j-1
-               end do
-               if (i >= j) exit
-               t = a(i);  a(i) = a(j);  a(j) = t
-               ti = Ind(i);  Ind(i) = Ind(j);  Ind(j) = ti
-               i=i+1
-               j=j-1
-            end do
-            if (first < i-1) call QSort(na,A,Ind, first, i-1)
-            if (j+1 < last)  call QSort(na,A,Ind, j+1, last)
+                if (left == right) then
+                    marker = left + 1
+                else
+                    marker = left
+                end if
+            
+                call QSort(marker-1,    A(:marker-1),I(:marker-1), randi)
+                call QSort(nA-marker+1, A(marker:),  I(marker:)  , randi)
+
+            end if 
 
         end subroutine QSort
 
-        pure subroutine nscore(nd,vr,wt,vrg,prob,ierror)
+        pure subroutine nscore(nd,vr,wt,vrg,ierror)
             !-----------------------------------------------------------------------
             !              Transform Univariate Data to Normal Scores
             !              ******************************************
@@ -154,7 +178,6 @@ module gslib
             !
             ! OUTPUT VARIABLES:
             !   vrg(nd)          normal scores
-            !   prob(nd)          probability
             !   ierror           error flag (0=error free,1=problem)
             !
             ! EXTERNAL REFERENCES:
@@ -169,12 +192,12 @@ module gslib
             real, intent(in), dimension(nd), optional :: wt
 
             !output 
-            real, intent(out), dimension(nd) :: vrg, prob
+            real, intent(out), dimension(nd) :: vrg 
             integer, intent(out) :: ierror
 
 
             ! internal variables
-            real, dimension(nd) :: vra
+            real, dimension(nd) :: wtt, vra
             integer, dimension(nd) :: ind
             real   :: twt, oldcp, cp
             integer :: i 
@@ -187,12 +210,11 @@ module gslib
                 ! initialize internal copy of the variable, weight and index
                 ind(i) = i
                 vra(i) = vr(i)
+                wtt(i) = wt(i)
                 if(present(wt)) then
-                    prob(i) = wt(i)
-                    twt = twt + wt(i)  ! total weight
-                else
-                    prob(i) = 1
                     twt = twt + 1.
+                else
+                    twt = twt + wt(i)  ! total weight
                 end if
             end do
             if(nd < 1 .OR. twt < EPSLON) then
@@ -200,17 +222,17 @@ module gslib
                 return
             end if
 
-            call QSort(nd, vra, ind, 1, nd)
-
+            call QSort(nd, A=vra, I=ind)
+        
             ! Compute the cumulative probabilities:
         
             oldcp = 0.0
             cp    = 0.0
             do i=1,nd
-                cp     =  cp + prob(ind(i)) / twt   !prob of interval ind(i), the last point
-                prob(ind(i))  = (cp + oldcp)/ 2.0        !prob of mid interval ind(i-1) - ind(i)
-                oldcp  =  cp                       !prob of interval ind(i-1), the last point of previous iteration
-                call gauinv(dble(prob(ind(i))),vrg(ind(i)),ierror)
+                cp     =  cp + wtt(ind(i)) / twt
+                wtt(i)  = (cp + oldcp)/ 2.0
+                oldcp  =  cp
+                call gauinv(dble(wtt(ind(i))),vrg(ind(i)),ierror)
                 if (ierror>0) return
             end do
             
@@ -1273,189 +1295,51 @@ module gslib
 
 end module gslib
 
-
-
-! do not use from here ***************************************************************************
-! this is testing zone
-
-! TODO: test functions backtr, gcum, powint, dpowint, locate, dlocate, beyond, sqdist, cova3, getindx, setrot, ordrel
-
 ! test functions
-
-subroutine test_qsort_serial()
-    use gslib
-    implicit none
-    integer, parameter :: na = 6
-    real, dimension (na) :: A = [3.,5.,2.,1.,8.,2.0]
-    integer, dimension (na) :: I = [1,2,3,4,5,6]
-
-    call QSort(na,A,I,1,na)
-    print *,  A
-    print *,  I
-
-end subroutine test_qsort_serial
 
 subroutine test_qsort()
     use gslib
     implicit none
-    integer, parameter :: na = 6
-    real, dimension (na) :: A 
-    integer, dimension (na) :: I 
+    real, dimension (5) :: x = [3,5,2,1,8]
+    integer, dimension (5) :: ind = [1,2,3,4,5]
 
-    !$OMP PARALLEL private(A, I)
-        A = [3.,5.,2.,1.,8.,2.0]
-        I = [1,2,3,4,5,6]
-        call QSort(na,A,I,1,na)
-        print *,  A
-        print *,  I
-    !$OMP END PARALLEL
+    call QSort(5,x,ind)
+    print *,  x
+    print *,  ind
 
 end subroutine test_qsort
 
 subroutine test_ulcg()
     use gslib
     implicit none
+    integer :: error, i
     real, dimension (5) :: x
     integer, dimension (5) :: ind
-    integer(i64) :: old_state
-    integer :: i
+    integer(i64) :: seed = 87687, old_state
+    
+    error = 1
 
-    !$OMP PARALLEL private(old_state, x, i, ind)
-        x = 0.
-        old_state = 87687                        ! may set the seed within the parallel region
-        do i=1 , 5
-            old_state = lcg(old_state)
-            x(i) = ulcg(old_state)
-        end do
-        call QSort(5,x,ind, 1, 5)
-        print *,  x
-    !$OMP END PARALLEL
+    !$OMP PARALLEL private(seed, old_state, x, i, ind)
 
-end subroutine test_ulcg
-
-subroutine test_ulcg_serial()
-    use gslib
-    implicit none
-    real, dimension (5) :: x
-    integer, dimension (5) :: ind
-    integer(i64) :: old_state = 87687_i64
-    integer :: i
-
+    old_state = lcg(seed)
     do i=1 , 5
         old_state = lcg(old_state)
         x(i) = ulcg(old_state)
     end do
-    call QSort(5,x,ind, 1, 5)
+    call QSort(5,x,ind)
     print *,  x
 
-end subroutine test_ulcg_serial
+    !$OMP END PARALLEL
 
+end subroutine test_ulcg
 
-subroutine test_ulcg_serial2()
-    use gslib
-    implicit none
-    real, dimension (500) :: x
-    integer(i64) :: old_state = 876878767
-    integer :: i
-    real :: mean, variance 
-
-    do i=1 , 500
-        old_state = lcg(old_state)
-        x(i) = ulcg(old_state)
-    end do
-    mean = sum(x)/500
-    variance = sum(x*x)/500-mean*mean
-
-    print *, 'experimental mean, variance',  mean, variance
-    print *, 'expected     mean, variance',  0.5, 1./12.
-
-end subroutine test_ulcg_serial2
-
-subroutine test_nscore_serial()
-    use gslib
-    implicit none
-    integer, parameter :: nd = 10
-    real, dimension(nd) :: vr, wt, prob, vrg
-    integer :: ierror
-
-    vr = [3.,2.,1.,4.,5.,6.,7.,8.,9.,10.]
-    wt = [1.,1.,1.,1.,1.,1.,1.,1.,1.,1.]
-
-    ! wt not defined
-    call nscore(nd, vr,vrg = vrg , prob = prob, ierror = ierror)
-
-    if (ierror == 0) then 
-        print *, 'gauss value' , vrg
-        print *, 'provavility' , prob
-    else
-        print *, 'error', ierror
-    end if
-
-end subroutine test_nscore_serial
-
-subroutine test_nscore()
-    use gslib
-    implicit none
-    integer, parameter :: nd = 10
-    real, dimension(nd) :: vr, wt, prob, vrg
-    integer :: ierror
-
-    vr = [3.,2.,1.,4.,5.,6.,7.,8.,9.,10.]
-    wt = [1.,1.,1.,1.,1.,1.,1.,1.,1.,1.]
-
-    !$OMP PARALLEL private(vrg, prob, ierror)
-        ! wt not defined
-        call nscore(nd, vr,vrg = vrg , prob = prob, ierror = ierror)
-        if (ierror == 0) then 
-            print *, 'gauss value' , vrg
-            print *, 'provavility' , prob
-            print *, ''
-        else
-            print *, 'error', ierror
-        end if
-   !$OMP END PARALLEL
-
-end subroutine test_nscore
 
 program test_gslib
     use gslib
     implicit none
 
-    print *, ''
     print *, 'test qsort'
-    print *, 'expected result'
-    print *, '   1.0       2.0       2.0      3.0      5.00       8.0'
-    print *, '     4         6         3        1        2          5'
+
     call  test_qsort()
-
-    print *, ''
-    print *, 'test ulcg'
-    print *, 'expected result'
-    print *, "same sequence n core times."
-    call  test_ulcg()
-
-    print *, ''
-    print *, 'test ulcg serial version'
-    print *, 'expected result'
-    print *, "7.47933537E-02  0.221471041      0.389764041      0.548619866      0.776747882"
-    call  test_ulcg_serial()
-
-    print *, ''
-    print *, 'test ulcg serial version mean and variance'
-    print *, 'expected result are the mean and variance of the uniform distribution with parameter a=0, b=1'
-    call  test_ulcg_serial2()
-
-    print *, ''
-    print *, 'test nscore, gauinv, and qsort'
-    print *, 'expected result: gaussian    {-0.67,  -1.036, ..., 1.04, 1.64} repated ncores'
-    print *, 'expected result: probability {0.25,     0.15, ..., 0.85, 0.95} repated ncores'
-    print *, 'expected result: gaussian and probability repated ncores'
-    call  test_nscore()
-    
-    print *, ''
-    print *, 'test nscore, gauinv, and qsort'
-    print *, 'expected result: gaussian    {-0.67,  -1.036, ..., 1.04, 1.64} '
-    print *, 'expected result: probability {0.25,     0.15, ..., 0.85, 0.95} '
-    call  test_nscore_serial()
 
 end program
