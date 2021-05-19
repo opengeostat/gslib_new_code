@@ -135,7 +135,7 @@ module gslib
 
         end subroutine QSort
 
-        pure subroutine nscore(nd,vr,wt,vrg,prob,ierror)
+        pure subroutine nscore(nd,vr,wt,vrg,prob,ind,ierror)
             !-----------------------------------------------------------------------
             !              Transform Univariate Data to Normal Scores
             !              ******************************************
@@ -154,7 +154,8 @@ module gslib
             !
             ! OUTPUT VARIABLES:
             !   vrg(nd)          normal scores
-            !   prob(nd)          probability
+            !   prob(nd)         probability
+            !   ind(nd)          order of the list sorted
             !   ierror           error flag (0=error free,1=problem)
             !
             ! EXTERNAL REFERENCES:
@@ -170,12 +171,12 @@ module gslib
 
             !output 
             real, intent(out), dimension(nd) :: vrg, prob
+            integer, intent(out), dimension(nd) :: ind
             integer, intent(out) :: ierror
 
 
             ! internal variables
             real, dimension(nd) :: vra
-            integer, dimension(nd) :: ind
             real   :: twt, oldcp, cp
             integer :: i 
 
@@ -1278,7 +1279,7 @@ end module gslib
 ! do not use from here ***************************************************************************
 ! this is testing zone
 
-! TODO: test functions backtr, gcum, powint, dpowint, locate, dlocate, beyond, sqdist, cova3, getindx, setrot, ordrel
+! TODO: test functions gcum, powint, dpowint, locate, dlocate, beyond, sqdist, cova3, getindx, setrot, ordrel
 
 ! test functions
 
@@ -1376,13 +1377,14 @@ subroutine test_nscore_serial()
     implicit none
     integer, parameter :: nd = 10
     real, dimension(nd) :: vr, wt, prob, vrg
+    integer, dimension(nd) :: ind
     integer :: ierror
 
     vr = [3.,2.,1.,4.,5.,6.,7.,8.,9.,10.]
     wt = [1.,1.,1.,1.,1.,1.,1.,1.,1.,1.]
 
     ! wt not defined
-    call nscore(nd, vr,vrg = vrg , prob = prob, ierror = ierror)
+    call nscore(nd, vr,vrg = vrg , prob = prob, ind = ind, ierror = ierror)
 
     if (ierror == 0) then 
         print *, 'gauss value' , vrg
@@ -1398,14 +1400,15 @@ subroutine test_nscore()
     implicit none
     integer, parameter :: nd = 10
     real, dimension(nd) :: vr, wt, prob, vrg
+    integer, dimension(nd) :: ind
     integer :: ierror
 
     vr = [3.,2.,1.,4.,5.,6.,7.,8.,9.,10.]
     wt = [1.,1.,1.,1.,1.,1.,1.,1.,1.,1.]
 
-    !$OMP PARALLEL private(vrg, prob, ierror)
+    !$OMP PARALLEL private(vrg, prob, ind, ierror)
         ! wt not defined
-        call nscore(nd, vr,vrg = vrg , prob = prob, ierror = ierror)
+        call nscore(nd, vr,vrg = vrg , prob = prob, ind = ind, ierror = ierror)
         if (ierror == 0) then 
             print *, 'gauss value' , vrg
             print *, 'provavility' , prob
@@ -1416,6 +1419,48 @@ subroutine test_nscore()
    !$OMP END PARALLEL
 
 end subroutine test_nscore
+
+
+subroutine test_backtr()
+    
+    use gslib
+    implicit none
+    ! inputs
+    integer, parameter :: nt = 10
+    integer :: ltail, utail, ierror
+    real, dimension(nt) ::  vr, vrg, wt, prob
+    integer, dimension(nt) ::  ind
+    real :: ltpar, utpar, zmin, zmax, vrgs
+
+    ! create transformation table
+    vr = [3.,2.,1.,4.,5.,6.,7.,8.,9.,10.]
+    wt = [1.,1.,1.,1.,1.,1.,1.,1.,1.,1.]
+
+    call nscore(nt, vr, wt, vrg , prob, ind, ierror)
+
+    if (ierror>0) then
+        print *, "error "
+        return
+    end if
+
+    !print sorted
+    print *, "transformation table"
+    print *, 'raw  ', vr(ind)   ! transformation table
+    print *, 'gauss', vrg(ind)  ! transformation table
+
+    !back transform
+    vrgs = -1.1 ! normal value
+    ltail = 1 
+    ltpar = 1.
+    utail = 1
+    utpar = 1.
+    zmin = 0
+    zmax = 12
+    print *, 'gaussian to back transform', vrgs
+    print *, 'raw value back transformed', backtr(vrgs,nt,vr(ind),vrg(ind),zmin,zmax,ltail,ltpar, utail,utpar)
+
+end subroutine test_backtr
+
 
 program test_gslib
     use gslib
@@ -1457,5 +1502,10 @@ program test_gslib
     print *, 'expected result: gaussian    {-0.67,  -1.036, ..., 1.04, 1.64} '
     print *, 'expected result: probability {0.25,     0.15, ..., 0.85, 0.95} '
     call  test_nscore_serial()
+
+    print *, ''
+    print *, 'test backtr'
+    print *, 'expected result: TODO '
+    call  test_backtr()
 
 end program
