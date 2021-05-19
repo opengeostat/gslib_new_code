@@ -1421,7 +1421,7 @@ subroutine test_nscore()
 end subroutine test_nscore
 
 
-subroutine test_backtr()
+subroutine test_backtr_serial()
     
     use gslib
     implicit none
@@ -1431,7 +1431,7 @@ subroutine test_backtr()
     real, dimension(nt) ::  vr, vrg, wt, prob
     integer, dimension(nt) ::  ind
     real :: ltpar, utpar, zmin, zmax, vrgs
-
+    
     ! create transformation table
     vr = [3.,2.,1.,4.,5.,6.,7.,8.,9.,10.]
     wt = [1.,1.,1.,1.,1.,1.,1.,1.,1.,1.]
@@ -1459,8 +1459,53 @@ subroutine test_backtr()
     print *, 'gaussian to back transform', vrgs
     print *, 'raw value back transformed', backtr(vrgs,nt,vr(ind),vrg(ind),zmin,zmax,ltail,ltpar, utail,utpar)
 
-end subroutine test_backtr
+end subroutine test_backtr_serial
 
+subroutine test_backtr()
+    
+    use gslib
+    implicit none
+    ! inputs
+    integer, parameter :: nt = 10
+    integer :: ltail, utail, ierror
+    real, dimension(nt) ::  vr, vrg, wt, prob
+    integer, dimension(nt) ::  ind
+    real :: ltpar, utpar, zmin, zmax, vrgs
+
+
+    !$OMP PARALLEL private(vr, vrg, wt, prob, ind, ierror, ltpar, utpar, zmin, zmax, vrgs, ltail, utail)
+
+        ! create transformation table
+        vr = [3.,2.,1.,4.,5.,6.,7.,8.,9.,10.]
+        wt = [1.,1.,1.,1.,1.,1.,1.,1.,1.,1.]
+
+        call nscore(nt, vr, wt, vrg , prob, ind, ierror)
+
+        if (ierror>0) then
+            print *, "error "
+        else
+
+            !print sorted
+            print *, "transformation table"
+            print *, 'raw  ', vr(ind)   ! transformation table
+            print *, 'gauss', vrg(ind)  ! transformation table
+
+            !back transform
+            vrgs = -1.1 ! normal value
+            ltail = 1 
+            ltpar = 1.
+            utail = 1
+            utpar = 1.
+            zmin = 0
+            zmax = 12
+            print *, 'gaussian to back transform', vrgs
+            print *, 'raw value back transformed', backtr(vrgs,nt,vr(ind),vrg(ind),zmin,zmax,ltail,ltpar, utail,utpar)
+            
+        end if
+
+    !$OMP END PARALLEL
+
+end subroutine test_backtr
 
 program test_gslib
     use gslib
@@ -1502,6 +1547,11 @@ program test_gslib
     print *, 'expected result: gaussian    {-0.67,  -1.036, ..., 1.04, 1.64} '
     print *, 'expected result: probability {0.25,     0.15, ..., 0.85, 0.95} '
     call  test_nscore_serial()
+
+    print *, ''
+    print *, 'test backtr'
+    print *, 'expected result: TODO '
+    call  test_backtr_serial()
 
     print *, ''
     print *, 'test backtr'
