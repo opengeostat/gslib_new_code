@@ -1182,15 +1182,14 @@ module gslib
         
         end subroutine setrot
 
-        pure subroutine ordrel(ivtype,ncut,ccdf,ccdfo,nviol,aviol,xviol)
+        pure subroutine ordrel_disc(ncut,ccdf,ccdfo,nviol,aviol,xviol)
             !-----------------------------------------------------------------------
-            !                 Correct Order Relation Problems
+            !                 Correct Order Relation Problems on discrete variable CDF
             !                 *******************************
             ! This subroutine identifies and corrects order relation problems in a
             ! conditional distribution known at a specified number of cutoffs.
             !
             ! INPUT VARIABLES:
-            !   ivtype           variable type (0=categorical, 1=continuous)
             !   ncut             number of cutoffs
             !   ccdf(i)          input ccdf values
             !
@@ -1209,7 +1208,7 @@ module gslib
             !-----------------------------------------------------------------------
 
             ! inputs
-            integer, intent(in) :: ncut, ivtype 
+            integer, intent(in) :: ncut
             real, intent(in), dimension(ncut) :: ccdf
             
             ! outputs
@@ -1237,27 +1236,96 @@ module gslib
             end do
             
             ! Correct sequentially up, then down, and then average:
+            sumcdf = 0.0
+            do i=1,ncut
+                sumcdf = sumcdf + ccdf1(i)
+            end do
+            if(sumcdf <= 0.0) sumcdf = 1.0
+            do i=1,ncut
+                ccdfo(i) = ccdf1(i) / sumcdf
+            end do
+
+            ! Accumulate error statistics:
+            nviol = 0
+            aviol = 0.
+            xviol = 0.
+            do i=1,ncut
+                if(ccdf(i) /= ccdfo(i)) then
+                    viol = abs(ccdf(i)-ccdfo(i))
+                    nviol(i) = nviol(i) + 1
+                    aviol(i) = aviol(i) + viol
+                    xviol(i) = max(xviol(i),viol)
+                endif
+            end do
             
-            if(ivtype == 0) then
-                sumcdf = 0.0
-                do i=1,ncut
-                    sumcdf = sumcdf + ccdf1(i)
-                end do
-                if(sumcdf <= 0.0) sumcdf = 1.0
-                do i=1,ncut
-                    ccdfo(i) = ccdf1(i) / sumcdf
-                end do
-            else
-                do i=2,ncut
-                    if(ccdf1(i) < ccdf1(i-1)) ccdf1(i) = ccdf1(i-1)
-                end do
-                do i=ncut-1,1,-1
-                    if(ccdf2(i) > ccdf2(i+1)) ccdf2(i) = ccdf2(i+1)
-                end do
-                do i=1,ncut
-                    ccdfo(i) = 0.5*(ccdf1(i)+ccdf2(i))
-                end do
-            end if
+        end subroutine ordrel_disc
+
+
+        pure subroutine ordrel_cont(ncut,ccdf,ccdfo,nviol,aviol,xviol)
+            !-----------------------------------------------------------------------
+            !                 Correct Order Relation Problems on continous variable CDF
+            !                 *******************************
+            ! This subroutine identifies and corrects order relation problems in a
+            ! conditional distribution known at a specified number of cutoffs.
+            !
+            ! INPUT VARIABLES:
+            !   ncut             number of cutoffs
+            !   ccdf(i)          input ccdf values
+            !
+            ! OUTPUT VARIABLES:
+            !   ccdfo            corrected ccdf values
+            !   nviol()          number of order relation violations
+            !   aviol()          average magnitude of the order relation violations
+            !   xviol()          maximum magnitude of the order relation violations
+            !
+            ! PROGRAMMING NOTES:
+            !
+            !   1. the arrays ccdf1 and ccdf2 are used for temporary storage of the
+            !      ccdf corrected sequentially upwards and downwards.  The program
+            !      execution will be stopped if the memory allocation of these two
+            !      arrays is not sufficient.
+            !-----------------------------------------------------------------------
+
+            ! inputs
+            integer, intent(in) :: ncut
+            real, intent(in), dimension(ncut) :: ccdf
+            
+            ! outputs
+            real, intent(out), dimension(ncut) :: ccdfo, aviol, xviol
+            integer, intent(out), dimension(ncut) :: nviol
+            
+            ! internals 
+            real, dimension(ncut) :: ccdf1, ccdf2
+            integer :: i
+            real :: viol
+        
+            ! Make sure conditional cdf is within [0,1]:
+            
+            do i=1,ncut
+                if(ccdf(i) < 0.0) then
+                    ccdf1(i) = 0.0
+                    ccdf2(i) = 0.0
+                else if(ccdf(i) > 1.0) then
+                    ccdf1(i) = 1.0
+                    ccdf2(i) = 1.0
+                else
+                    ccdf1(i) = ccdf(i)
+                    ccdf2(i) = ccdf(i)
+                endif
+            end do
+            
+            ! Correct sequentially up, then down, and then average:
+            
+            do i=2,ncut
+                if(ccdf1(i) < ccdf1(i-1)) ccdf1(i) = ccdf1(i-1)
+            end do
+            do i=ncut-1,1,-1
+                if(ccdf2(i) > ccdf2(i+1)) ccdf2(i) = ccdf2(i+1)
+            end do
+            do i=1,ncut
+                ccdfo(i) = 0.5*(ccdf1(i)+ccdf2(i))
+            end do
+
             
             ! Accumulate error statistics:
             nviol = 0
@@ -1272,7 +1340,7 @@ module gslib
                 endif
             end do
             
-        end subroutine ordrel
+        end subroutine ordrel_cont
 
 end module gslib
 
@@ -1654,9 +1722,9 @@ subroutine test_ordrel
 
     ! example from https://geostatisticslessons.com/images/mikoverview/correction.png
     ccdf = [0.25 , 0.45, 0.30, 0.50, 0.75, 0.90]
-    ivtype = 1 
+    ivtype = 1                               
 
-    call ordrel(ivtype,ncut,ccdf,ccdfo,nviol,aviol,xviol)
+    call ordrel_cont(ncut,ccdf,ccdfo,nviol,aviol,xviol)
 
     print *, 'cdf raw                ', ccdf
     print *, 'cdf corrected          ', ccdfo
@@ -1669,6 +1737,8 @@ end subroutine test_ordrel
 program test_gslib
     use gslib
     implicit none
+
+    integer :: i
 
     print *, ''
     print *, 'test qsort'
@@ -1759,4 +1829,5 @@ program test_gslib
     print *, '                   magnitude of violations   0    7.5E-02   7.5E-02   0.0   0.0    0.0'
     call  test_ordrel()
     
+
 end program
