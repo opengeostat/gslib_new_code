@@ -1279,7 +1279,7 @@ end module gslib
 ! do not use from here ***************************************************************************
 ! this is testing zone
 
-! TODO: test functions gcum, powint, dpowint, locate, dlocate, beyond, sqdist, cova3, getindx, setrot, ordrel
+! TODO: test functions locate, dlocate, beyond, sqdist, cova3, getindx, setrot, ordrel
 
 ! test functions
 
@@ -1461,6 +1461,7 @@ subroutine test_backtr_serial()
 
 end subroutine test_backtr_serial
 
+
 subroutine test_backtr()
     
     use gslib
@@ -1500,12 +1501,77 @@ subroutine test_backtr()
             zmax = 12
             print *, 'gaussian to back transform', vrgs
             print *, 'raw value back transformed', backtr(vrgs,nt,vr(ind),vrg(ind),zmin,zmax,ltail,ltpar, utail,utpar)
-            
+
         end if
 
     !$OMP END PARALLEL
 
 end subroutine test_backtr
+
+
+subroutine test_gcum_serial()
+    
+    use gslib
+    implicit none
+    ! inputs
+    integer, parameter :: nt = 3
+    real, dimension(nt) ::  vrg
+    
+    ! create array with gaussians
+    vrg = [-1.64, -1.04, 10.64]
+
+    print *, 'gaussian', vrg
+    print *, 'cdf     ', gcum(vrg)
+
+end subroutine test_gcum_serial
+
+subroutine test_gcum()
+    use gslib
+    implicit none
+    ! inputs
+    integer, parameter :: nt = 3
+    real, dimension(nt) ::  vrg
+    
+    !$OMP PARALLEL private(vrg)
+        ! create array with gaussians
+        vrg = [-1.64, -1.04, 10.64]
+
+        print *, 'gaussian', vrg
+        print *, 'cdf     ', gcum(vrg)
+
+    !$OMP END PARALLEL
+
+end subroutine test_gcum
+
+subroutine test_powint()
+    use gslib
+    implicit none
+    ! inputs
+    real  , dimension (3):: rxlow, rxhigh, rylow, ryhigh, rxval, rpow
+    real*8, dimension (3):: dxlow, dxhigh, dylow, dyhigh, dxval, dpow
+    
+    !$OMP PARALLEL private(rxlow, rxhigh, rylow, ryhigh, rxval, rpow, dxlow, dxhigh, dylow, dyhigh, dxval, dpow)
+        ! create arrays and scalars
+        rxlow  = [0.,1.,2.]
+        rylow  = [0.,1.,2.] 
+        rxhigh = [1.,2.,3.]
+        ryhigh = [1.,2.,3.]  
+        rxval =  [.5,1.5,2.5]
+        rpow = 1.
+
+        dxlow  = dble(rxlow)
+        dylow  = dble(rylow) 
+        dxhigh = dble(rxhigh)
+        dyhigh = dble(ryhigh)  
+        dxval =  dble(rxval)
+        dpow = 1.
+         
+        print *, 'reals',  powint(rxlow,rxhigh,rylow,ryhigh,rxval,rpow)
+        print *, 'doubl', dpowint(dxlow,dxhigh,dylow,dyhigh,dxval,dpow)
+
+    !$OMP END PARALLEL
+
+end subroutine test_powint
 
 program test_gslib
     use gslib
@@ -1557,5 +1623,23 @@ program test_gslib
     print *, 'test backtr'
     print *, 'expected result: TODO '
     call  test_backtr()
+
+    print *, ''
+    print *, 'test gcum'
+    print *, 'expected result:  gaussian  -1.63999999      -1.03999996       1.63999999 '
+    print *, '                  cdf        5.05025983E-02  0.149170041      0.949497402 '
+    call  test_gcum_serial()
+
+    print *, ''
+    print *, 'test gcum'
+    print *, 'expected result:  gaussian  -1.63999999      -1.03999996       10.6400003 '
+    print *, '                  cdf        5.05025983E-02  0.149170041       1.00000000 '
+    call  test_gcum()
+
+    print *, ''
+    print *, 'test powint and dpowint'
+    print *, 'expected result:   reals  0.50       1.50       2.50'
+    print *, '                   doubl  0.50       1.50       2.50'
+    call  test_powint()
 
 end program
