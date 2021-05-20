@@ -920,6 +920,8 @@ module gslib
             !   sqdist           The squared distance accounting for the anisotropy
             !                      and the rotation of coordinates (if any).
             !
+            !   sqdist < OR -999999. MEANS ERROR 
+            !
             ! NO EXTERNAL REFERENCES
             !-----------------------------------------------------------------------
 
@@ -932,6 +934,11 @@ module gslib
             real*8 :: cont,dx,dy,dz
             integer :: i
             ! Compute component distance vectors and the squared distance:
+
+            if (nrotmat < ind) then
+                sqdist = -999999.
+                return
+            end if
 
             dx = dble(x1 - x2)
             dy = dble(y1 - y2)
@@ -1740,26 +1747,6 @@ end subroutine test_ordrel
 subroutine test_setrot()
     use gslib
     implicit none
-
-
-    !-----------------------------------------------------------------------
-    !              Sets up an Anisotropic Rotation Matrix
-    !              **************************************
-    !
-    ! Sets up the matrix to transform cartesian coordinates to coordinates
-    ! accounting for angles and anisotropy (see manual for a detailed
-    ! definition):
-    !
-    ! INPUT PARAMETERS:
-    !   ang1             Azimuth angle for principal direction
-    !   ang2             Dip angle for principal direction
-    !   ang3             Third rotation angle
-    !   anis1            First anisotropy ratio
-    !   anis2            Second anisotropy ratio
-    !   ind              matrix indicator to initialize
-    !   nrotmat          maximum number of rotation matrices dimensioned
-    !   rotmat           rotation matrices
-    !-----------------------------------------------------------------------
 
     ! inputs
     integer, parameter :: nrotmat = 1
