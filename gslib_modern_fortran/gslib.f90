@@ -1279,7 +1279,8 @@ end module gslib
 ! do not use from here ***************************************************************************
 ! this is testing zone
 
-! TODO: test functions locate, dlocate, beyond, sqdist, cova3, getindx, setrot, ordrel
+! TODO: test functions beyond, sqdist, cova3, getindx, setrot, ordrel
+! TODO: check carefully the test for more possible errors and expected output
 
 ! test functions
 
@@ -1622,6 +1623,22 @@ subroutine test_dlocate()
 
 end subroutine test_dlocate
 
+
+subroutine test_getindx() 
+    use gslib
+    implicit none
+    real, dimension(3) :: loc
+    real :: min,siz
+    min = 0
+    siz = 20
+    loc = [3.8, 45.9, 300.5]
+
+    print *, 'in a grid with xmin =', min, 'and cell size =', siz
+    print *, 'the points with coordinate', loc
+    print *, 'are in the grid index', getindx(min,siz,loc)
+
+end subroutine test_getindx
+
 program test_gslib
     use gslib
     implicit none
@@ -1701,4 +1718,8 @@ program test_gslib
     print *, 'expected result:  >>>> x is between xx(j) and xx(j+1), where j = 4'
     call  test_dlocate()
 
+    print *, ''
+    print *, 'test getindx'
+    print *, 'expected result:  are in the grid index  1   3   16'
+    call  test_getindx()
 end program
