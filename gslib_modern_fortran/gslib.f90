@@ -1573,6 +1573,55 @@ subroutine test_powint()
 
 end subroutine test_powint
 
+subroutine test_locate()
+    use gslib
+    implicit none
+        
+    ! input variables
+    integer, parameter :: n = 5
+    integer:: is, ie
+    real:: x
+    real, dimension(n) :: xx
+
+    !$OMP PARALLEL private(xx, is, ie, x)
+        ! create arrays and scalars
+        xx  = [0.,1.,2.,3.,4.]
+        is = 1
+        ie = n
+        x = 3.1
+        print *, 'x = ', x
+        print *, 'xx =', xx
+        print *, 'x is between xx(j) and xx(j+1), where j =', locate(xx,n,is,ie,x)
+
+    !$OMP END PARALLEL
+
+end subroutine test_locate
+
+
+subroutine test_dlocate()
+    use gslib
+    implicit none
+        
+    ! input variables
+    integer, parameter :: n = 5
+    integer:: is, ie
+    real*8:: x
+    real*8, dimension(n) :: xx
+
+    !$OMP PARALLEL private(xx, is, ie, x)
+        ! create arrays and scalars
+        xx  = [0.,1.,2.,3.,4.]
+        is = 1
+        ie = n
+        x = 3.1
+        print *, 'x = ', x
+        print *, 'xx =', xx
+        print *, 'x is between xx(j) and xx(j+1), where j =', dlocate(xx,n,is,ie,x)
+
+    !$OMP END PARALLEL
+
+end subroutine test_dlocate
+
 program test_gslib
     use gslib
     implicit none
@@ -1641,5 +1690,15 @@ program test_gslib
     print *, 'expected result:   reals  0.50       1.50       2.50'
     print *, '                   doubl  0.50       1.50       2.50'
     call  test_powint()
+
+    print *, ''
+    print *, 'test powint and dpowint'
+    print *, 'expected result:  >>>> x is between xx(j) and xx(j+1), where j = 4'
+    call  test_locate()
+
+    print *, ''
+    print *, 'test powint and dpowint'
+    print *, 'expected result:  >>>> x is between xx(j) and xx(j+1), where j = 4'
+    call  test_dlocate()
 
 end program
