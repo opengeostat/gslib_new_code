@@ -939,12 +939,12 @@ module gslib
             sqdist = 0.0
             do i=1,3
                 cont   = rotmat(ind,i,1) * dx &
-                + rotmat(ind,i,2) * dy &
-                + rotmat(ind,i,3) * dz
+                       + rotmat(ind,i,2) * dy &
+                       + rotmat(ind,i,3) * dz
                 sqdist = sqdist + cont * cont
             end do
             return
-        end function
+        end function sqdist
 
         pure real function cova3(x1,y1,z1,x2,y2,z2,ivarg,nst,c0,it,cc,aa, irot,nrotmat,rotmat, d)
             !-----------------------------------------------------------------------
@@ -1126,6 +1126,8 @@ module gslib
             !   ind              matrix indicator to initialize
             !   nrotmat          maximum number of rotation matrices dimensioned
             !   rotmat           rotation matrices
+            !
+            ! Note: all angles are in degrees
             !-----------------------------------------------------------------------
 
             ! inputs
@@ -1349,9 +1351,9 @@ end module gslib
 ! do not use from here ***************************************************************************
 ! this is testing zone
 
-! TODO: test functions beyond, sqdist, cova3, setrot
+! TODO: test functions beyond, cova3
 ! TODO: check carefully the test for more possible errors and expected output
-
+! issues, all subroutine using rotation matrix have risk of memory segmentation if ind > num of rotation matrix
 ! test functions
 
 subroutine test_qsort_serial()
@@ -1734,11 +1736,94 @@ subroutine test_ordrel
 
 end subroutine test_ordrel
 
-program test_gslib
+
+subroutine test_setrot()
     use gslib
     implicit none
 
-    integer :: i
+
+    !-----------------------------------------------------------------------
+    !              Sets up an Anisotropic Rotation Matrix
+    !              **************************************
+    !
+    ! Sets up the matrix to transform cartesian coordinates to coordinates
+    ! accounting for angles and anisotropy (see manual for a detailed
+    ! definition):
+    !
+    ! INPUT PARAMETERS:
+    !   ang1             Azimuth angle for principal direction
+    !   ang2             Dip angle for principal direction
+    !   ang3             Third rotation angle
+    !   anis1            First anisotropy ratio
+    !   anis2            Second anisotropy ratio
+    !   ind              matrix indicator to initialize
+    !   nrotmat          maximum number of rotation matrices dimensioned
+    !   rotmat           rotation matrices
+    !-----------------------------------------------------------------------
+
+    ! inputs
+    integer, parameter :: nrotmat = 1
+    integer :: ind
+    real:: ang1,ang2,ang3,anis1,anis2
+
+    !output
+    real*8, dimension(nrotmat,3,3) :: rotmat
+
+    ang1 = 45.
+    ang2 = 35.
+    ang3 = 70.
+    anis1 = 2.
+    anis2 = 3.
+
+    ind = 1
+
+    call setrot(ang1,ang2,ang3,anis1,anis2,ind,nrotmat,rotmat)
+    print *, 'rotation matrix for ang1,ang2,ang3,anis1,anis2', ang1,ang2,ang3,anis1,anis2
+    print *, real(rotmat(1,1,:))
+    print *, real(rotmat(1,2,:))
+    print *, real(rotmat(1,3,:))
+    print *, 'rotation is a pibot point 0,0,0'
+
+end subroutine test_setrot
+
+subroutine test_sqdist()
+    use gslib
+    implicit none
+
+    integer, parameter:: nrotmat = 1
+    integer:: ind 
+    real*8, dimension(nrotmat,3,3) :: rotmat
+    real :: x1,y1,z1, x2,y2, z2
+    real:: ang1,ang2,ang3,anis1,anis2
+
+    ! get rotation matrix
+    ang1 = 45.
+    ang2 = 35.
+    ang3 = 70.
+    anis1 = 2.
+    anis2 = 3.
+
+    ind = 1
+
+    call setrot(ang1,ang2,ang3,anis1,anis2,ind,nrotmat,rotmat)
+
+    ! calc sqdist
+    x1 = 0.
+    y1 = 0.
+    z1 = 0.
+    x2 = 1.
+    y2 = 1.
+    z2 = 0.
+
+    print *, 'coordinates x1,y1,z1,x2,y2,z2', x1,y1,z1,x2,y2,z2
+    print *, 'parameter for rot matrix with ang1,ang2,ang3,anis1,anis2', ang1,ang2,ang3,anis1,anis2
+    print *, 'isotropic dist',  real(sqdist(x1,y1,z1,x2,y2,z2,ind,nrotmat,rotmat))
+
+end subroutine test_sqdist
+
+program test_gslib
+    use gslib
+    implicit none
 
     print *, ''
     print *, 'test qsort'
@@ -1829,5 +1914,22 @@ program test_gslib
     print *, '                   magnitude of violations   0    7.5E-02   7.5E-02   0.0   0.0    0.0'
     call  test_ordrel()
     
+
+    print *, ''
+    print *, 'test ordrel'
+    print *, 'expected result:    '
+    print *, '                rotation matrix for ang1,ang2,ang3,anis1,anis2  45. 35. 70. 2.  3.'
+    print *, '                    0.579      0.579    0.574'
+    print *, '                   -0.311     -7.E-02   0.385'
+    print *, '                    0.175     -0.268    9.3E-02'
+    call  test_setrot()
+
+    print *, ''
+    print *, 'test ordrel'
+    print *, 'expected result:    '
+    print *, 'coordinates x1,y1,z1,x2,y2,z2   0. 0. 0. 1. 1. 0.'
+    print *, 'parameter for rot matrix with ang1,ang2,ang3,anis1,anis2   45. 35. 70. 2. 3.'
+    print *, 'isotropic dist   1.49582493'
+    call  test_sqdist()
 
 end program
