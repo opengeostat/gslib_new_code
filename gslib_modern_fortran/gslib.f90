@@ -1217,7 +1217,7 @@ module gslib
             integer, intent(out), dimension(ncut) :: nviol
             
             ! internals 
-            real, dimension(ncut) :: ccdf1(ncut), ccdf2(ncut)
+            real, dimension(ncut) :: ccdf1, ccdf2
             integer :: i
             real :: sumcdf, viol
         
@@ -1260,7 +1260,9 @@ module gslib
             end if
             
             ! Accumulate error statistics:
-            
+            nviol = 0
+            aviol = 0.
+            xviol = 0.
             do i=1,ncut
                 if(ccdf(i) /= ccdfo(i)) then
                     viol = abs(ccdf(i)-ccdfo(i))
@@ -1279,7 +1281,7 @@ end module gslib
 ! do not use from here ***************************************************************************
 ! this is testing zone
 
-! TODO: test functions beyond, sqdist, cova3, getindx, setrot, ordrel
+! TODO: test functions beyond, sqdist, cova3, setrot
 ! TODO: check carefully the test for more possible errors and expected output
 
 ! test functions
@@ -1639,6 +1641,31 @@ subroutine test_getindx()
 
 end subroutine test_getindx
 
+subroutine test_ordrel
+    use gslib
+    implicit none
+
+    ! inputs
+    integer, parameter:: ncut = 6
+    integer :: ivtype                            !input
+    real, dimension(ncut) :: ccdf                !input
+    real, dimension(ncut) :: ccdfo, aviol, xviol !oputput
+    integer, dimension(ncut) :: nviol            !order violations
+
+    ! example from https://geostatisticslessons.com/images/mikoverview/correction.png
+    ccdf = [0.25 , 0.45, 0.30, 0.50, 0.75, 0.90]
+    ivtype = 1 
+
+    call ordrel(ivtype,ncut,ccdf,ccdfo,nviol,aviol,xviol)
+
+    print *, 'cdf raw                ', ccdf
+    print *, 'cdf corrected          ', ccdfo
+    print *, 'number of violations   ', nviol
+    print *, 'average of violations  ', aviol
+    print *, 'magnitude of violations', xviol
+
+end subroutine test_ordrel
+
 program test_gslib
     use gslib
     implicit none
@@ -1722,4 +1749,14 @@ program test_gslib
     print *, 'test getindx'
     print *, 'expected result:  are in the grid index  1   3   16'
     call  test_getindx()
+
+    print *, ''
+    print *, 'test ordrel'
+    print *, 'expected result:   cdf raw         0.25      0.45      0.30     0.50     0.75     0.90'
+    print *, '                   cdf corrected   0.25      0.375     0.375    0.50     0.75     0.90'
+    print *, '                   number of violations      0    1         1         0     0      0 '
+    print *, '                   average of violations     0    7.5E-02   7.5E-02   0.0   0.0    0.0 '
+    print *, '                   magnitude of violations   0    7.5E-02   7.5E-02   0.0   0.0    0.0'
+    call  test_ordrel()
+    
 end program
