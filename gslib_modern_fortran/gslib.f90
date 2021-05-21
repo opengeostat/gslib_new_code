@@ -1,5 +1,5 @@
 module gslib
-
+    use, intrinsic:: ieee_arithmetic, only: ieee_value, ieee_quiet_nan, ieee_is_nan
     implicit none
 
     real, parameter, private :: EPSLON=1.0e-20, UNEST=-1.0, PI=3.14159265,PMX=999., DEG2RAD=3.141592654/180.0
@@ -10,12 +10,7 @@ module gslib
     integer, parameter :: a_lcg = 1103515245
     integer, parameter :: c_lcg = 12345
 
-
     contains
-
-        ! TODO: write a set of validations/tests in two stages
-        !       a) sequential tests
-        !       b) parallel tests with OpenMP (and coarrays if possible)
 
         ! NOTE: use LAPACK as replacement for ksol.f90 and ktsol.f90 
         !       to compile
@@ -343,11 +338,6 @@ module gslib
                 backtr = powint(vrg(j),vrg(j+1),vr(j),vr(j+1),vrgs,1.0)
 
             endif
-
-            ! there is a finction call getz, which is equal to this function except for this two lines
-            !if(getz < zmin) getz = zmin
-            !if(getz > zmax) getz = zmax
-            ! getz is only used in trans.f90
 
         end function backtr
 
@@ -920,7 +910,7 @@ module gslib
             !   sqdist           The squared distance accounting for the anisotropy
             !                      and the rotation of coordinates (if any).
             !
-            !   sqdist < OR -999999. MEANS ERROR 
+            !   sqdist is nan  MEANS ERROR 
             !
             ! NO EXTERNAL REFERENCES
             !-----------------------------------------------------------------------
@@ -936,7 +926,8 @@ module gslib
             ! Compute component distance vectors and the squared distance:
 
             if (nrotmat < ind) then
-                sqdist = -999999.
+                ! set to nan
+                sqdist = ieee_value(sqdist, ieee_quiet_nan)
                 return
             end if
 
@@ -1008,7 +999,8 @@ module gslib
             real, intent(in) :: x1,y1,z1,x2,y2,z2          ! coordinates of the two points
             integer, intent(in) :: ivarg, irot, nst, nrotmat                  
             real, intent(in), dimension(ivarg) ::c0
-            real, intent(in), dimension(nst*ivarg) :: it,cc,aa
+            real, intent(in), dimension(nst*ivarg) :: cc,aa
+            integer, intent(in), dimension(nst*ivarg) :: it
             real*8, intent(in), dimension(nrotmat,3,3) :: rotmat
             real, intent(in), optional :: d
             
@@ -1035,10 +1027,14 @@ module gslib
             ! Check for "zero" distance, return with cmax if so:
         
             hsqd = sqdist(x1,y1,z1,x2,y2,z2,irot,nrotmat,rotmat)
+            if (ieee_is_nan(hsqd)) then
+                cova3 = ieee_value(cova3,ieee_quiet_nan)
+                return
+            end if
             if(real(hsqd) < EPSLON) then
                 cova3 = cmax
                 return
-            endif
+            end if
         
             ! Loop over all the structures:
         
@@ -1086,7 +1082,9 @@ module gslib
                     end if
 
                 ! TODO: add here Cauchy model, Matern model, Logistic model (rational quadratic model), Generalised Cauchy, Spheroidal
-                
+                else
+                    cova3 = ieee_value(cova3,ieee_quiet_nan)
+                    return
                 end if
 
             end do
@@ -1135,6 +1133,7 @@ module gslib
             !   rotmat           rotation matrices
             !
             ! Note: all angles are in degrees
+            !       matrix set to nan if there is an error nrotmat<ind
             !-----------------------------------------------------------------------
 
             ! inputs
@@ -1148,6 +1147,11 @@ module gslib
             real*8 :: afac1,afac2,sina,sinb,sint, cosa,cosb,cost
             real :: alpha, beta, theta
             
+            ! returns nan if ind is not valid
+            if(nrotmat<ind) then
+                rotmat = ieee_value(rotmat,ieee_quiet_nan)
+                return
+            end if
             ! Converts the input angles to three angles which make more
             !  mathematical sense:
             
@@ -1808,6 +1812,80 @@ subroutine test_sqdist()
 
 end subroutine test_sqdist
 
+subroutine test_sqdist_err()
+    use gslib
+    implicit none
+
+    integer, parameter:: nrotmat = 1
+    integer:: ind 
+    real*8, dimension(nrotmat,3,3) :: rotmat
+    real*8 :: distsq
+    real :: x1,y1,z1, x2,y2, z2
+    real:: ang1,ang2,ang3,anis1,anis2
+
+    ! get rotation matrix
+    ang1 = 45.
+    ang2 = 35.
+    ang3 = 70.
+    anis1 = 2.
+    anis2 = 3.
+
+    ind = 2
+
+    call setrot(ang1,ang2,ang3,anis1,anis2,ind,nrotmat,rotmat)
+    
+    ! calc sqdist
+    x1 = 0.
+    y1 = 0.
+    z1 = 0.
+    x2 = 1.
+    y2 = 1.
+    z2 = 0.
+
+    distsq = sqdist(x1,y1,z1,x2,y2,z2,ind,nrotmat,rotmat)
+    print *, 'rotation matrix',  rotmat
+    print *, 'distance is nan?', ieee_is_nan(distsq)
+    print *, 'isotropic dist',  distsq
+
+end subroutine test_sqdist_err
+
+subroutine test_cova3()
+    use gslib
+    implicit none
+
+    integer, parameter:: nrotmat = 1
+    integer:: ind 
+    real*8, dimension(nrotmat,3,3) :: rotmat
+    real :: x1,y1,z1, x2,y2, z2
+    real:: ang1,ang2,ang3,anis1,anis2, c
+
+    ! get rotation matrix
+    ang1 = 45.
+    ang2 = 35.
+    ang3 = 70.
+    anis1 = 2.
+    anis2 = 3.
+
+    ind = 1
+
+    call setrot(ang1,ang2,ang3,anis1,anis2,ind,nrotmat,rotmat)
+
+    ! calc sqdist
+    x1 = 0.
+    y1 = 0.
+    z1 = 0.
+    x2 = 1.
+    y2 = 1.
+    z2 = 0.
+
+    c= cova3(x1,y1,z1,x2,y2,z2,ivarg =1 ,nst = 2,c0 = [0.25], &
+             it =[1,1],cc=[0.25, 0.5],aa = [1., 3.], irot = ind,nrotmat=nrotmat, rotmat = rotmat)
+
+    print *, 'isotropic covariance', c
+
+end subroutine test_cova3
+
+
 program test_gslib
     use gslib
     implicit none
@@ -1918,5 +1996,15 @@ program test_gslib
     print *, 'parameter for rot matrix with ang1,ang2,ang3,anis1,anis2   45. 35. 70. 2. 3.'
     print *, 'isotropic dist   1.49582493'
     call  test_sqdist()
+
+    print *, ''
+    print *, 'test ordrel'
+    print *, 'expected result:   array of nans, true, and nan '
+    call  test_sqdist_err()
+
+    print *, ''
+    print *, 'test cova3'
+    print *, 'expected result:   isotropic covariance  0.211179554'
+    call  test_cova3()
 
 end program
