@@ -2,7 +2,25 @@ module gslib
     use, intrinsic:: ieee_arithmetic, only: ieee_value, ieee_quiet_nan, ieee_is_nan
     implicit none
 
-    real, parameter, private :: EPSLON=1.0e-20, UNEST=-1.0, PI=3.14159265,PMX=999., DEG2RAD=3.141592654/180.0
+    !General constants
+    real, parameter, public :: EPSLON=1.0e-20, PI=3.14159265,PMX=999., DEG2RAD=3.141592654/180.0
+    
+    integer, parameter, public :: VARTYPE_CATEGORICAL = 0
+    integer, parameter, public :: VARTYPE_CONTINOUS = 1
+
+    !CDF parameter for beyond
+    integer, parameter, public :: CDF_TAIL_LINEAR = 1
+    integer, parameter, public :: CDF_TAIL_POWER = 2
+    integer, parameter, public :: CDF_TAIL_TABULATED = 3
+    integer, parameter, public :: CDF_TAIL_HYPERBOLIC = 4   
+
+    !Variogram Models for COVA3
+    integer, parameter, public :: COV_SPHERICAL = 1
+    integer, parameter, public :: COV_EXPONENTIAL = 2
+    integer, parameter, public :: COV_GAUSSIAN = 3
+    integer, parameter, public :: COV_POWER = 4
+    integer, parameter, public :: COV_HOLE_EFFECT = 5
+    integer, parameter, public :: COV_DAMP_HOLE_EFFECT = 5   
 
     ! constants for random generator lcg
     integer, parameter :: i64 = selected_int_kind(18)
@@ -307,9 +325,9 @@ module gslib
                 backtr = vr(1)
                 cdflo  = gcum(vrg(1))
                 cdfbt  = gcum(vrgs)
-                if(ltail == 1) then
+                if(ltail == CDF_TAIL_LINEAR) then
                     backtr = powint(0.0,cdflo,zmin,vr(1),cdfbt,1.0)
-                else if(ltail == 2) then
+                else if(ltail == CDF_TAIL_POWER) then
                     cpow   = 1.0 / ltpar
                     backtr = powint(0.0,cdflo,zmin,vr(1),cdfbt,cpow)
                 endif
@@ -320,12 +338,12 @@ module gslib
                 backtr = vr(nt)
                 cdfhi  = gcum(vrg(nt))
                 cdfbt  = gcum(vrgs)
-                if(utail == 1) then
+                if(utail == CDF_TAIL_LINEAR) then
                     backtr = powint(cdfhi,1.0,vr(nt),zmax,cdfbt,1.0)
-                else if(utail == 2) then
+                else if(utail == CDF_TAIL_POWER) then
                     cpow   = 1.0 / utpar
                     backtr = powint(cdfhi,1.0,vr(nt),zmax,cdfbt,cpow)
-                else if(utail == 4) then
+                else if(utail == CDF_TAIL_HYPERBOLIC) then
                     lambda = (vr(nt)**utpar)*(1.0-gcum(vrg(nt)))
                     backtr = (lambda/(1.0-gcum(vrgs)))**(1.0/utpar)
                 endif
@@ -516,17 +534,212 @@ module gslib
         end function dlocate
 
             
-        pure subroutine beyond(ivtype,nccut,ccut,ccdf,ncut,cut,cdf,zmin,zmax, &
-            ltail,ltpar,middle,mpar,utail,utpar,zval,cdfval,ierr)
+        pure real function beyond_cdf(nccut,ccut,ccdf,ncut,cut,cdf,zmin,zmax, &
+            ltail,ltpar,middle,mpar,utail,utpar, zval)
             !-----------------------------------------------------------------------
             !                     Go Beyond a Discrete CDF
             !                     ************************
-            ! This subroutine is a general purpose subroutine to interpolate within
-            ! and extrapolate beyond discrete points on a conditional CDF.  If the
-            ! Z value "zval" is specified then the corresponding CDF value "cdfval"
-            ! will be computed, if the CDF value "cdfval" is specified the
-            ! corresponding Z value "zval" will be computed.
+            ! This function extrapolate beyond discrete points on a conditional CDF.  It computes 
+            ! the corresponding CDF value.
+            ! Nan is returned if there is an error 
 
+            ! INPUT/OUTPUT VARIABLES:                
+            !   nccut            number of cutoffs defining the conditional CDF
+            !   ccut()           real array of the nccut cutoffs
+            !   ccdf()           real array of the conditional cdf values
+            !   ncut             number of cutoffs defining the global CDF
+            !   cut()            real array of the ncut cutoffs
+            !   cdf()            real array of the global cdf values
+            !   zmin,zmax        minimum and maximum allowable data values
+            !   ltail            option to handle values in lower tail
+            !   ltpar            parameter required for option ltail
+            !   middle           option to handle values in the middle
+            !   mpar             parameter required for option middle
+            !   utail            option to handle values in upper tail
+            !   utpar            parameter required for option utail
+            !   output variables
+            !   zval             z value corresponding to the cdf value to be computed
+            !-----------------------------------------------------------------------
+            
+            ! Input variables
+            integer, intent (in) :: nccut, ncut
+            real, intent (in), dimension (ncut):: ccut, ccdf
+            real, intent (in), dimension (1):: cut, cdf       !consider using scalar here
+            real, intent (in):: zmin, zmax, ltpar, utpar, mpar, zval
+            integer, intent (in):: ltail, middle, utail
+            
+
+            !  Internal variables
+            integer ::   cclow,cchigh, ipart, idat, iupp, ilow
+            real ::  powr, temp, lambda
+        
+            ! Figure out what part of distribution: ipart = 0 - lower tail
+            !                                       ipart = 1 - middle
+            !                                       ipart = 2 - upper tail
+
+            ipart = 1
+            if(zval <= ccut(1))       ipart = 0
+            if(zval >= ccut(nccut))   ipart = 2
+        
+            ! ARE WE IN THE LOWER TAIL?
+
+            if(ipart == 0) then
+                if(ltail == CDF_TAIL_LINEAR) then
+                
+                    ! Straight Linear Interpolation:
+                
+                    powr = 1.0
+                    beyond_cdf = powint(zmin,ccut(1),0.0,ccdf(1),zval,powr)
+   
+                else if(ltail == CDF_TAIL_POWER) then
+                
+                    ! Power Model interpolation to lower limit "zmin"?
+                
+                    beyond_cdf = powint(zmin,ccut(1),0.0,ccdf(1),zval,ltpar)
+       
+                    ! Linear interpolation between the rescaled global cdf?
+                
+                else if(ltail == CDF_TAIL_TABULATED) then
+
+                    ! Computing the cdf value. Locate the point and the class bound:
+                
+                    idat = locate(cut,ncut,1,ncut,zval)
+                    iupp = locate(cut,ncut,1,ncut,ccut(1))
+                
+                    ! Straight linear interpolation if no data; otherwise, linear:
+                
+                    if(idat <= 0 .OR. idat >= ncut .OR. &
+                    iupp <= 0 .OR. iupp >= ncut) then
+                        beyond_cdf = powint(zmin,cut(1),0.0,cdf(1),zval,1.)
+                    else
+                        temp   = powint(cut(idat),cut(idat+1),cdf(idat),cdf(idat+1),zval,1.)
+                        beyond_cdf = temp*ccdf(1)/cdf(iupp)
+                    endif
+                    
+                else
+                    ! Error situation - unacceptable option, return nan
+                    beyond_cdf = ieee_value(beyond_cdf,ieee_quiet_nan)
+                    return
+                endif
+            endif
+        
+            ! FINISHED THE LOWER TAIL,  ARE WE IN THE MIDDLE?
+        
+            if(ipart == 1) then
+            
+                ! Establish the lower and upper limits:
+            
+                cclow = locate(ccut,nccut,1,nccut,zval)
+                
+                cchigh = cclow + 1
+                if(middle == CDF_TAIL_LINEAR) then
+                
+                    ! Straight Linear Interpolation:
+                
+                    powr = 1.0
+                    beyond_cdf = powint(ccut(cclow),ccut(cchigh),ccdf(cclow),ccdf(cchigh),zval,powr)
+
+                    ! Power interpolation between class bounds?
+                
+                else if(middle == CDF_TAIL_POWER) then
+
+                    beyond_cdf = powint(ccut(cclow),ccut(cchigh),ccdf(cclow),ccdf(cchigh),zval,mpar)
+                
+                    ! Linear interpolation between the rescaled global cdf?
+                
+                else if(middle == CDF_TAIL_TABULATED) then
+                    ilow = locate(cut,ncut,1,ncut,ccut(cclow))
+                    iupp = locate(cut,ncut,1,ncut,ccut(cchigh))
+                    if(cut(ilow) < ccut(cclow))  ilow = ilow + 1
+                    if(cut(iupp) > ccut(cchigh)) iupp = iupp - 1
+
+                    idat = locate(cut,ncut,1,ncut,zval)
+                
+                    ! Straight linear interpolation if no data; otherwise, local linear
+                    ! interpolation:
+                
+                    if(idat <= 0 .OR. idat >= ncut .OR. ilow <= 0 .OR. ilow >= ncut .OR. &
+                       iupp <= 0 .OR. iupp >= ncut .OR. iupp <= ilow) then         
+                        beyond_cdf=powint(ccut(cclow),ccut(cchigh),ccdf(cclow),ccdf(cchigh),zval,1.)
+                    else
+                        temp = powint(cut(idat),cut(idat+1),cdf(idat),cdf(idat+1),zval,1.)
+                        beyond_cdf=powint(cdf(ilow),cdf(iupp),ccdf(cclow),ccdf(cchigh),temp,1.)
+                    endif
+                    
+                else
+                    ! Error situation - unacceptable option, return nan
+                    beyond_cdf = ieee_value(beyond_cdf,ieee_quiet_nan)
+                    return
+                endif
+            endif
+        
+            ! FINISHED THE MIDDLE,  ARE WE IN THE UPPER TAIL?
+        
+            if(ipart == 2) then
+                if(utail == CDF_TAIL_LINEAR) then
+                    
+                    powr = 1.0
+                    beyond_cdf = powint(ccut(nccut),zmax,ccdf(nccut), 1.0,zval,powr)
+        
+                else if(utail == CDF_TAIL_POWER) then
+                
+                    ! Power interpolation to upper limit "utpar"?
+                
+                    beyond_cdf = powint(ccut(nccut),zmax,ccdf(nccut),1.0,zval,utpar)
+
+                    ! Linear interpolation between the rescaled global cdf?
+                
+                else if(utail == CDF_TAIL_TABULATED) then
+
+                    ! Approximately Locate the point and the class bound:
+                
+                    idat = locate(cut,ncut,1,ncut,zval)
+                    ilow = locate(cut,ncut,1,ncut,ccut(nccut))
+                    if(cut(idat) < zval)        idat = idat + 1
+                    if(cut(ilow) < ccut(nccut)) ilow = ilow + 1
+                
+                    ! Straight linear interpolation if no data; otherwise, local linear
+                    ! interpolation:
+                
+                    if(idat <= 0 .OR. idat >= ncut .OR. ilow <= 0 .OR. ilow >= ncut) then
+                        beyond_cdf = powint(ccut(nccut),zmax,ccdf(nccut),1.0,zval,1.)
+                    else
+                        temp   = powint(cut(idat),cut(idat+1),cdf(idat),cdf(idat+1),zval,1.)
+                        beyond_cdf = powint(cdf(ilow),1.0, ccdf(nccut),1.0,temp,1.)
+                    endif
+
+                    ! Fit a Hyperbolic Distribution?
+                
+                else if(utail == CDF_TAIL_HYPERBOLIC) then
+                
+                    ! Figure out "lambda" and required info:
+                
+                    lambda = (ccut(nccut)**utpar)*(1.0-ccdf(nccut))
+                    beyond_cdf = 1.0 - (lambda/(zval**utpar))
+
+                else
+                    ! Error situation - unacceptable option, return nan
+                    beyond_cdf = ieee_value(beyond_cdf,ieee_quiet_nan)
+                    return
+                endif
+            endif
+
+            ! All finished - return:
+        
+            return
+        
+        end function beyond_cdf
+
+
+        pure real function beyond_zval(ivtype,nccut,ccut,ccdf,ncut,cut,cdf,zmin,zmax, &
+            ltail,ltpar,middle,mpar,utail,utpar,cdfval)
+            !-----------------------------------------------------------------------
+            !                     Go Beyond a Discrete CDF
+            !                     ************************
+            ! This function interpolate the CDF value "zval" within and extrapolate  
+            ! beyond discrete points on a conditional CDF.  
+            ! returns nan if there is an error
+            !
             ! INPUT/OUTPUT VARIABLES:                
             !   ivtype           variable type (1=continuous, 0=categorical)
             !   nccut            number of cutoffs defining the conditional CDF
@@ -542,44 +755,37 @@ module gslib
             !   mpar             parameter required for option middle
             !   utail            option to handle values in upper tail
             !   utpar            parameter required for option utail
-            !   output variables
-            !   zval             interesting cutoff (if -1 then it is calculated)
-            !   cdfval           interesting CDF (if -1 then it is calculated)
-            !   ierr             error code
-            !       1            zval > UNEST .AND. cdfval > UNEST, 
-            !                    or zval <= UNEST .AND. cdfval <= UNEST
-            !       2            Unacceptable input option
+            !   cdfval           cdf value corresponding to the z value to be computed
             !-----------------------------------------------------------------------
             
             ! Input variables
             integer, intent (in) :: ivtype, nccut, ncut
             real, intent (in), dimension (ncut):: ccut, ccdf
             real, intent (in), dimension (1):: cut, cdf       !consider using scalar here
-            real, intent (in):: zmin, zmax, ltpar, utpar, mpar
+            real, intent (in):: zmin, zmax, ltpar, utpar, mpar, cdfval 
             integer, intent (in):: ltail, middle, utail
             
-            !output variable
-            integer, intent (out):: ierr
-            real, intent (out):: zval, cdfval
 
             !  Internal variables
             integer ::   cclow,cchigh, i, ipart, idat, iupp, ilow
             real :: cum, powr, temp, lambda
         
             ! Check for both "zval" and "cdfval" defined or undefined:
-        
-            ierr  = 1
-            if(zval > UNEST .AND. cdfval > UNEST) return
-            if(zval <= UNEST .AND. cdfval <= UNEST) return
-        
+
+            ! return nan if the cdf is not valid
+            if(cdfval < 0. .or. cdfval > 1.) then 
+                beyond_zval = ieee_value(beyond_zval,ieee_quiet_nan)
+                return
+            end if
+
             ! Handle the case of a categorical variable:
         
-            if(ivtype == 0) then
+            if(ivtype == VARTYPE_CATEGORICAL) then
                 cum = 0
                 do i=1,nccut
                     cum = cum + ccdf(i)
                     if(cdfval <= cum) then
-                        zval = ccut(i)
+                        beyond_zval = ccut(i)
                         return
                     endif
                 end do
@@ -589,94 +795,55 @@ module gslib
             ! Figure out what part of distribution: ipart = 0 - lower tail
             !                                       ipart = 1 - middle
             !                                       ipart = 2 - upper tail
-            ierr  = 0
             ipart = 1
-            if(zval > UNEST) then
-                if(zval <= ccut(1))       ipart = 0
-                if(zval >= ccut(nccut))   ipart = 2
-            else
-                if(cdfval <= ccdf(1))     ipart = 0
-                if(cdfval >= ccdf(nccut)) ipart = 2
-            endif
+            if(cdfval <= ccdf(1))     ipart = 0
+            if(cdfval >= ccdf(nccut)) ipart = 2
+            
         
             ! ARE WE IN THE LOWER TAIL?
         
             if(ipart == 0) then
-                if(ltail == 1) then
+                if(ltail == CDF_TAIL_LINEAR) then
                 
                     ! Straight Linear Interpolation:
                 
                     powr = 1.0
-                    if(zval > UNEST) then
-                        cdfval = powint(zmin,ccut(1),0.0,ccdf(1), &
-                        zval,powr)
-                    else
-                        zval = powint(0.0,ccdf(1),zmin,ccut(1), &
-                        cdfval,powr)
-                    endif
-                else if(ltail == 2) then
+                    beyond_zval = powint(0.0,ccdf(1),zmin,ccut(1), cdfval,powr)
+                    
+                else if(ltail == CDF_TAIL_POWER) then
                 
                     ! Power Model interpolation to lower limit "zmin"?
-                
-                    if(zval > UNEST) then
-                        cdfval = powint(zmin,ccut(1),0.0,ccdf(1), &
-                        zval,ltpar)
-                    else
-                        powr = 1.0 / ltpar
-                        zval = powint(0.0,ccdf(1),zmin,ccut(1), &
-                        cdfval,powr)
-                    endif
+
+                    powr = 1.0 / ltpar
+                    beyond_zval = powint(0.0,ccdf(1),zmin,ccut(1),cdfval,powr)
+                    
                 
                     ! Linear interpolation between the rescaled global cdf?
                 
-                else if(ltail == 3) then
-                    if(zval > UNEST) then
-                    
-                        ! Computing the cdf value. Locate the point and the class bound:
-                    
-                        idat = locate(cut,ncut,1,ncut,zval)
-                        iupp = locate(cut,ncut,1,ncut,ccut(1))
-                    
-                        ! Straight linear interpolation if no data; otherwise, linear:
-                    
-                        if(idat <= 0 .OR. idat >= ncut .OR. &
-                        iupp <= 0 .OR. iupp >= ncut) then
-                            cdfval = powint(zmin,cut(1),0.0,cdf(1), &
-                            zval,1.)
-                        else
-                            temp   = powint(cut(idat),cut(idat+1), &
-                            cdf(idat),cdf(idat+1),zval,1.)
-                            cdfval = temp*ccdf(1)/cdf(iupp)
-                        endif
+                else if(ltail == CDF_TAIL_TABULATED) then
+                                      
+                    ! Computing Z value: Are there any data out in the tail?
+                
+                    iupp = locate(cut,ncut,1,ncut,ccut(1))
+                
+                    ! Straight linear interpolation if no data; otherwise, local linear
+                    ! interpolation:
+                
+                    if(iupp <= 0 .OR. iupp >= ncut) then
+                        beyond_zval = powint(0.0,cdf(1),zmin,cut(1),cdfval,1.)
                     else
-                    
-                        ! Computing Z value: Are there any data out in the tail?
-                    
-                        iupp = locate(cut,ncut,1,ncut,ccut(1))
-                    
-                        ! Straight linear interpolation if no data; otherwise, local linear
-                        ! interpolation:
-                    
-                        if(iupp <= 0 .OR. iupp >= ncut) then
-                            zval = powint(0.0,cdf(1),zmin,cut(1), &
-                            cdfval,1.)
+                        temp = cdfval*cdf(iupp)/ccdf(1)
+                        idat = locate(cdf,ncut,1,ncut,temp)
+                        if(idat <= 0 .OR. idat >= ncut) then
+                            beyond_zval = powint(0.0,cdf(1),zmin, cut(1),cdfval,1.)
                         else
-                            temp = cdfval*cdf(iupp)/ccdf(1)
-                            idat = locate(cdf,ncut,1,ncut,temp)
-                            if(idat <= 0 .OR. idat >= ncut) then
-                                zval = powint(0.0,cdf(1),zmin, &
-                                cut(1),cdfval,1.)
-                            else
-                                zval = powint(cdf(idat),cdf(idat+1), &
-                                cut(idat),cut(idat+1),temp,1.)
-                            end if
-                        endif
+                            beyond_zval = powint(cdf(idat),cdf(idat+1),cut(idat),cut(idat+1),temp,1.)
+                        end if
                     endif
+                    
                 else
-                
-                    ! Error situation - unacceptable option:
-                
-                    ierr = 2
+                    ! Error situation - unacceptable option, returns nan
+                    beyond_zval = ieee_value(beyond_zval,ieee_quiet_nan)
                     return
                 endif
             endif
@@ -686,96 +853,54 @@ module gslib
             if(ipart == 1) then
             
                 ! Establish the lower and upper limits:
-            
-                if(zval > UNEST) then
-                    cclow = locate(ccut,nccut,1,nccut,zval)
-                else
-                    cclow = locate(ccdf,nccut,1,nccut,cdfval)
-                endif
+                
+                cclow = locate(ccdf,nccut,1,nccut,cdfval)
                 cchigh = cclow + 1
-                if(middle == 1) then
+
+                if(middle == CDF_TAIL_LINEAR) then
                 
                     ! Straight Linear Interpolation:
                 
                     powr = 1.0
-                    if(zval > UNEST) then
-                        cdfval = powint(ccut(cclow),ccut(cchigh), &
-                        ccdf(cclow),ccdf(cchigh),zval,powr)
-                    else
-                        zval = powint(ccdf(cclow),ccdf(cchigh), &
-                        ccut(cclow),ccut(cchigh),cdfval,powr)
-                    endif
+                    beyond_zval = powint(ccdf(cclow),ccdf(cchigh),ccut(cclow),ccut(cchigh),cdfval,powr)
                 
                     ! Power interpolation between class bounds?
                 
-                else if(middle == 2) then
-                    if(zval > UNEST) then
-                        cdfval = powint(ccut(cclow),ccut(cchigh), &
-                        ccdf(cclow),ccdf(cchigh),zval,mpar)
-                    else
-                        powr = 1.0 / mpar
-                        zval = powint(ccdf(cclow),ccdf(cchigh), &
-                        ccut(cclow),ccut(cchigh),cdfval,powr)
-                    endif
+                else if(middle == CDF_TAIL_POWER) then
+       
+                    powr = 1.0 / mpar
+                    beyond_zval = powint(ccdf(cclow),ccdf(cchigh),ccut(cclow),ccut(cchigh),cdfval,powr)
                 
                     ! Linear interpolation between the rescaled global cdf?
                 
-                else if(middle == 3) then
+                else if(middle == CDF_TAIL_TABULATED) then
                     ilow = locate(cut,ncut,1,ncut,ccut(cclow))
                     iupp = locate(cut,ncut,1,ncut,ccut(cchigh))
                     if(cut(ilow) < ccut(cclow))  ilow = ilow + 1
                     if(cut(iupp) > ccut(cchigh)) iupp = iupp - 1
-                    if(zval > UNEST) then
-                        idat = locate(cut,ncut,1,ncut,zval)
-                    
-                        ! Straight linear interpolation if no data; otherwise, local linear
-                        ! interpolation:
-                    
-                        if(idat <= 0 .OR. idat >= ncut .OR. &
-                        ilow <= 0 .OR. ilow >= ncut .OR. &
-                        iupp <= 0 .OR. iupp >= ncut .OR. &
-                        iupp <= ilow) then
-                            cdfval=powint(ccut(cclow),ccut(cchigh), &
-                            ccdf(cclow),ccdf(cchigh),zval,1.)
-                        else
-                            temp = powint(cut(idat),cut(idat+1), &
-                            cdf(idat),cdf(idat+1),zval,1.)
-                            cdfval=powint(cdf(ilow),cdf(iupp), &
-                            ccdf(cclow),ccdf(cchigh),temp,1.)
-                        endif
+                
+                
+                    ! Straight linear interpolation if no data; otherwise, local linear
+                    ! interpolation:
+                
+                    if(ilow <= 0 .OR. ilow >= ncut .OR. &
+                    iupp <= 0 .OR. iupp >= ncut .OR. &
+                    iupp <= ilow) then
+                        beyond_zval=powint(ccdf(cclow),ccdf(cchigh),ccut(cclow),ccut(cchigh),cdfval,1.)
                     else
-                    
-                        ! Straight linear interpolation if no data; otherwise, local linear
-                        ! interpolation:
-                    
-                        if(ilow <= 0 .OR. ilow >= ncut .OR. &
-                        iupp <= 0 .OR. iupp >= ncut .OR. &
-                        iupp <= ilow) then
-                            zval=powint(ccdf(cclow),ccdf(cchigh), &
-                            ccut(cclow),ccut(cchigh),cdfval,1.)
+                        temp=powint(ccdf(cclow),ccdf(cchigh),cdf(ilow),cdf(iupp),cdfval,1.)
+                        idat = locate(cdf,ncut,1,ncut,temp)
+                        if(cut(idat) < ccut(cclow)) idat=idat+1
+                        if(idat <= 0 .OR. idat >= ncut .OR. cut(idat+1) > ccut(cchigh)) then
+                            beyond_zval = powint(ccdf(cclow),ccdf(cchigh),ccut(cclow),ccut(cchigh),cdfval,1.)
                         else
-                            temp=powint(ccdf(cclow),ccdf(cchigh), &
-                            cdf(ilow),cdf(iupp),cdfval,1.)
-                            idat = locate(cdf,ncut,1,ncut,temp)
-                            if(cut(idat) < ccut(cclow)) idat=idat+1
-                            if(idat <= 0 .OR. idat >= ncut .OR. &
-                            cut(idat+1) > ccut(cchigh)) then
-                                zval = powint(ccdf(cclow), &
-                                ccdf(cchigh),ccut(cclow), &
-                                ccut(cchigh),cdfval,1.)
-                            else
-                                zval = powint(cdf(idat),cdf(idat+1), &
-                                cut(idat),cut(idat+1),temp,1.)
-                            end if
-                            zval = powint(cdf(idat),cdf(idat+1), &
-                            cut(idat),cut(idat+1),temp,1.)
-                        endif
+                            beyond_zval = powint(cdf(idat),cdf(idat+1),cut(idat),cut(idat+1),temp,1.)
+                        end if
+                        beyond_zval = powint(cdf(idat),cdf(idat+1),cut(idat),cut(idat+1),temp,1.)
                     endif
                 else
-                
-                    ! Error situation - unacceptable option:
-                
-                    ierr = 2
+                    ! Error situation - unacceptable option, returns nan
+                    beyond_zval = ieee_value(beyond_zval,ieee_quiet_nan)
                     return
                 endif
             endif
@@ -783,111 +908,67 @@ module gslib
             ! FINISHED THE MIDDLE,  ARE WE IN THE UPPER TAIL?
         
             if(ipart == 2) then
-                if(utail == 1) then
+                if(utail == CDF_TAIL_LINEAR) then
                     powr = 1.0
-                    if(zval > UNEST) then
-                        cdfval = powint(ccut(nccut),zmax,ccdf(nccut), &
-                        &                                   1.0,zval,powr)
-                    else
-                        zval   = powint(ccdf(nccut),1.0,ccut(nccut), &
-                        zmax,cdfval,powr)
-                    endif
+                    beyond_zval = powint(ccdf(nccut),1.0,ccut(nccut), zmax,cdfval,powr)
         
-                else if(utail == 2) then
+                else if(utail == CDF_TAIL_POWER) then
                 
                     ! Power interpolation to upper limit "utpar"?
-                
-                    if(zval > UNEST) then
-                        cdfval = powint(ccut(nccut),zmax,ccdf(nccut), &
-                        &                                   1.0,zval,utpar)
-                    else
-                        powr = 1.0 / utpar
-                        zval   = powint(ccdf(nccut),1.0,ccut(nccut), &
-                        zmax,cdfval,powr)
-                    endif
+   
+                    powr = 1.0 / utpar
+                    beyond_zval = powint(ccdf(nccut),1.0,ccut(nccut),zmax,cdfval,powr)
                 
                     ! Linear interpolation between the rescaled global cdf?
                 
-                else if(utail == 3) then
-                    if(zval > UNEST) then
-                    
-                        ! Approximately Locate the point and the class bound:
-                    
-                        idat = locate(cut,ncut,1,ncut,zval)
-                        ilow = locate(cut,ncut,1,ncut,ccut(nccut))
-                        if(cut(idat) < zval)        idat = idat + 1
-                        if(cut(ilow) < ccut(nccut)) ilow = ilow + 1
-                    
-                        ! Straight linear interpolation if no data; otherwise, local linear
-                        ! interpolation:
-                    
-                        if(idat <= 0 .OR. idat >= ncut .OR. &
-                        ilow <= 0 .OR. ilow >= ncut) then
-                            cdfval = powint(ccut(nccut),zmax, &
-                            ccdf(nccut),1.0,zval,1.)
-                        else
-                            temp   = powint(cut(idat),cut(idat+1), &
-                            cdf(idat),cdf(idat+1),zval,1.)
-                            cdfval = powint(cdf(ilow),1.0, &
-                            ccdf(nccut),1.0,temp,1.)
-                        endif
+                else if(utail == CDF_TAIL_TABULATED) then
+                
+                
+                    ! Computing Z value: Are there any data out in the tail?
+                
+                    ilow = locate(cut,ncut,1,ncut,ccut(nccut))
+                    if(cut(ilow) < ccut(nccut)) ilow = ilow + 1
+                
+                    ! Straight linear interpolation if no data; otherwise, local linear
+                    ! interpolation:
+                
+                    if(ilow <= 0 .OR. ilow >= ncut) then
+                        beyond_zval = powint(ccdf(nccut),1.0,ccut(nccut),zmax,cdfval,1.)
                     else
-                    
-                        ! Computing Z value: Are there any data out in the tail?
-                    
-                        ilow = locate(cut,ncut,1,ncut,ccut(nccut))
-                        if(cut(ilow) < ccut(nccut)) ilow = ilow + 1
-                    
-                        ! Straight linear interpolation if no data; otherwise, local linear
-                        ! interpolation:
-                    
-                        if(ilow <= 0 .OR. ilow >= ncut) then
-                            zval   = powint(ccdf(nccut),1.0, &
-                            ccut(nccut),zmax,cdfval,1.)
+                        temp = powint(ccdf(nccut),1.0, &
+                        cdf(ilow),1.0,cdfval,1.)
+                        idat = locate(cdf,ncut,1,ncut,temp)
+                        if(cut(idat) < ccut(nccut)) idat=idat+1
+                        if(idat >= ncut) then
+                            beyond_zval = powint(ccdf(nccut),1.0,ccut(nccut),zmax,cdfval,1.)
                         else
-                            temp = powint(ccdf(nccut),1.0, &
-                            cdf(ilow),1.0,cdfval,1.)
-                            idat = locate(cdf,ncut,1,ncut,temp)
-                            if(cut(idat) < ccut(nccut)) idat=idat+1
-                            if(idat >= ncut) then
-                                zval   = powint(ccdf(nccut),1.0, &
-                                ccut(nccut),zmax,cdfval,1.)
-                            else
-                                zval = powint(cdf(idat),cdf(idat+1), &
-                                cut(idat),cut(idat+1),temp,1.)
-                            endif
+                            beyond_zval = powint(cdf(idat),cdf(idat+1),cut(idat),cut(idat+1),temp,1.)
                         endif
                     endif
                 
                     ! Fit a Hyperbolic Distribution?
                 
-                else if(utail == 4) then
+                else if(utail == CDF_TAIL_HYPERBOLIC) then
                 
                     ! Figure out "lambda" and required info:
                 
                     lambda = (ccut(nccut)**utpar)*(1.0-ccdf(nccut))
-                    if(zval > UNEST) then
-                        cdfval = 1.0 - (lambda/(zval**utpar))
-                    else
-                        zval = (lambda/(1.0-cdfval))**(1.0/utpar)
-                    endif
+                    beyond_zval = (lambda/(1.0-cdfval))**(1.0/utpar)
+
                 else
-                
-                    ! Error situation - unacceptable option:
-                
-                    ierr = 2
+                    ! Error situation - unacceptable option, returns nan
+                    beyond_zval = ieee_value(beyond_zval,ieee_quiet_nan)
                     return
                 endif
             endif
-            if(zval < zmin) zval = zmin
-            if(zval > zmax) zval = zmax
+            if(beyond_zval < zmin) beyond_zval = zmin
+            if(beyond_zval > zmax) beyond_zval = zmax
         
             ! All finished - return:
         
             return
         
-        end subroutine beyond
-
+        end function beyond_zval
 
         pure real*8 function sqdist(x1,y1,z1,x2,y2,z2,ind,nrotmat,rotmat)
             !-----------------------------------------------------------------------
@@ -955,7 +1036,7 @@ module gslib
             ! INPUT VARIABLES:
             !   x1,y1,z1         coordinates of first point
             !   x2,y2,z2         coordinates of second point
-            !   nst              number of nested structures (maximum of 4)
+            !   nst              number of nested structures
             !   ivarg            variogram number (set to 1 unless doing cokriging
             !                       or indicator kriging)
             !   c0(ivarg)        isotropic nugget constant
@@ -1017,7 +1098,7 @@ module gslib
             cmax   = c0(ivarg)
             do is=1,nst
                 ist = istart + is - 1
-                if(it(ist) == 4) then
+                if(it(ist) == COV_POWER) then
                     cmax = cmax + PMX
                 else
                     cmax = cmax + cc(ist)
@@ -1050,28 +1131,28 @@ module gslib
                 h = real(dsqrt(hsqd))
             
                 ! Spherical Variogram Model?
-                if(it(ist) == 1) then
+                if(it(ist) == COV_SPHERICAL) then
                     hr = h/aa(ist)
                     if(hr < 1.) cova3=cova3+cc(ist)*(1.-hr*(1.5-.5*hr*hr))
                 
                 ! Exponential Variogram Model?
-                else if(it(ist) == 2) then
+                else if(it(ist) == COV_EXPONENTIAL) then
                     cova3 = cova3 + cc(ist)*exp(-3.0*h/aa(ist))
                 
                 ! Gaussian Variogram Model?
-                else if(it(ist) == 3) then
+                else if(it(ist) == COV_GAUSSIAN) then
                     cova3 = cova3 + cc(ist)*exp(-3.*(h/aa(ist))*(h/aa(ist)))
                 
                 ! Power Variogram Model?
-                else if(it(ist) == 4) then
+                else if(it(ist) == COV_POWER) then
                     cova3 = cova3 + cmax - cc(ist)*(h**aa(ist))
                 
                 ! Hole Effect Model?
-                else if(it(ist) == 5) then
+                else if(it(ist) == COV_HOLE_EFFECT) then
                     cova3 = cova3 + cc(ist)*cos(h/aa(ist)*PI)
 
                 ! Damped Hole Effect Model?
-                else if(it(ist) == 6) then
+                else if(it(ist) == COV_DAMP_HOLE_EFFECT) then
 
                     if(present(d)) then
                         cova3 = cova3 + cc(ist)*exp(-3.0*h/d)*cos(h/aa(ist)*PI)
@@ -1362,7 +1443,6 @@ end module gslib
 ! do not use from here ***************************************************************************
 ! this is testing zone
 
-! TODO: test functions beyond, cova3
 ! TODO: check carefully the test for more possible errors and expected output
 ! issues, all subroutine using rotation matrix have risk of memory segmentation if ind > num of rotation matrix
 ! test functions
@@ -1849,6 +1929,29 @@ subroutine test_sqdist_err()
 
 end subroutine test_sqdist_err
 
+
+subroutine test_beyond()
+    use gslib
+    implicit none
+    real :: cdfval, zval
+
+    cdfval = beyond_cdf(nccut = 5, ccut = [0.1,0.2, 0.3, 0.5, 0.8], &
+                        ccdf = [0.1,0.2, 0.3, 0.5, 0.8], ncut = 1,cut = [0.5],cdf = [0.5], &
+                        zmin = 0.,zmax = 10., ltail = CDF_TAIL_LINEAR, ltpar = 1., &
+                        middle  = CDF_TAIL_LINEAR, mpar =1., &
+                        utail = CDF_TAIL_LINEAR,utpar = 1.1,zval = 0.11) 
+
+     zval = beyond_zval(ivtype = VARTYPE_CONTINOUS, nccut = 5, ccut = [0.1,0.2, 0.3, 0.5, 0.8], &
+                        ccdf = [0.1,0.2, 0.3, 0.5, 0.8], ncut = 1,cut = [0.5],cdf = [0.5], &
+                        zmin = 0.,zmax = 10., ltail = CDF_TAIL_LINEAR,ltpar = 1., &
+                        middle  = CDF_TAIL_LINEAR, mpar =1., &
+                        utail = CDF_TAIL_LINEAR,utpar = 1.1,cdfval = cdfval) 
+
+    print *, 'cdfval for zval 0.11 is', cdfval
+    print *, 'zval for this cdfval', zval
+    
+end subroutine test_beyond
+
 subroutine test_cova3()
     use gslib
     implicit none
@@ -1879,12 +1982,12 @@ subroutine test_cova3()
     z2 = 0.
 
     c= cova3(x1,y1,z1,x2,y2,z2,ivarg =1 ,nst = 2,c0 = [0.25], &
-             it =[1,1],cc=[0.25, 0.5],aa = [1., 3.], irot = ind,nrotmat=nrotmat, rotmat = rotmat)
+             it =[COV_SPHERICAL,COV_SPHERICAL],cc=[0.25, 0.5], &
+             aa = [1., 3.], irot = ind,nrotmat=nrotmat, rotmat = rotmat)
 
     print *, 'isotropic covariance', c
 
 end subroutine test_cova3
-
 
 program test_gslib
     use gslib
@@ -2006,5 +2109,11 @@ program test_gslib
     print *, 'test cova3'
     print *, 'expected result:   isotropic covariance  0.211179554'
     call  test_cova3()
+
+    print *, ''
+    print *, 'test beyond_cdf and beyond_zval '
+    print *, 'expected result:   cdfval for zval 0.11 is  0.109999999'
+    print *,  '                  zval for this cdfval  0.109999999'
+    call  test_beyond()
 
 end program
