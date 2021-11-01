@@ -11,3 +11,15 @@ TODO
  - [ ] implement interpolator with pointer functions, so it can allow stacking multiple interpolation functions.   
  - [ ] implement kdtree for neighborhood
  - [ ] implement efficient search for gridded data
+ - [ ] add test with open OpenBLAS, and probably a helper function
+ - [ ] find way to link OpenBLAS without absolute path
+
+
+Note 
+-----
+Use LAPACK as a replacement for ksol.f90 and ktsol.f90 
+to compile
+- Install OpenBLAS precompiled. 
+        ```conda install -c conda-forge openblas```
+- Then, just link the library. Here an example 
+        ``` gfortran -o .\test.exe .\test.f90 -L "OpenBLAS-0.3.15" "C:\Users\AMartinez\Miniconda3\pkgs\openblas-0.3.15-pthreads_h543f93c_0\Library\lib\openblas.lib" ```
