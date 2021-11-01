@@ -42,14 +42,3 @@ module neighborhood
 
 
 end module neighborhood
-
-program test_neighborhood
-    use neighborhood
-    implicit none
-
-    real :: x(5) = [1,2,3,4,5]
-    real :: y(5) = [1,2,3,4,5]
-    real :: z(5) = [0,0,0,0,0]
-
-    print *,  ball (x, y, z, x0 = 1., y0 = 1., z0 =1., r =2.)
-end program
